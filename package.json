@@ -1,0 +1,19 @@
+{
+  "name": "fgirl-crawler",
+  "version": "1.0.0",
+  "description": "Web crawler for fgirl.ch escort profiles",
+  "main": "crawler.js",
+  "scripts": {
+    "start": "node crawler.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "puppeteer": "^21.5.0",
+    "cheerio": "^1.0.0-rc.12",
+    "csv-writer": "^1.6.0",
+    "axios": "^1.6.0",
+    "https-proxy-agent": "^7.0.2"
+  },
+  "author": "",
+  "license": "ISC"
+}
