@@ -859,7 +859,7 @@ class FgirlCategoryCrawler {
     }
 
     async multiThreadedCrawlRealtime() {
-        console.log('Starting real-time multi-threaded crawl with fixed target of 1919 girls');
+        console.log('Starting real-time multi-threaded crawl with dynamic target from website');
 
         // First, check the actual total pages from the website
         await this.init();
@@ -867,14 +867,22 @@ class FgirlCategoryCrawler {
         console.log('🔍 Checking website for total pages...');
         totalPagesGirl = await this.checkTotalPages();
 
-        // Set fixed target to 1919 girls (from the original CSV)
-        totalGirlsExpected = 1919;
+        console.log('🔍 Checking website for total girls count...');
+        totalGirlsExpected = await this.checkTotalGirls();
 
         // Get current count from CSV file
         const currentCSVCount = this.getCurrentCSVCount();
 
         console.log(`🎯 Fixed Target: ${totalGirlsExpected.toLocaleString()} girls across ${totalPagesGirl} pages`);
         console.log(`📊 Current CSV count: ${currentCSVCount} girls`);
+
+        // Check if target is already reached before starting threads
+        if (currentCSVCount >= totalGirlsExpected) {
+            console.log(`🎯 ALREADY COMPLETE! Found ${currentCSVCount} girls, target is ${totalGirlsExpected}.`);
+            console.log(`✅ No need to crawl. Target already reached.`);
+            await this.cleanup(); // Clean up the initial browser instance
+            return [];
+        }
 
         await this.cleanup(); // Clean up the initial browser instance
 
@@ -1020,7 +1028,7 @@ class FgirlCategoryCrawler {
 async function main() {
     console.log('=== Fgirl Category Crawler Started ===');
     console.log('=== Multi-threaded Mode with Real-time CSV Writing ===');
-    console.log('=== Fixed Target: 1919 girls total in CSV file ===');
+    console.log('=== Dynamic Target: Will fetch actual number from website ===');
     console.log('=== 10 threads with intelligent stopping when target reached ===');
     console.log('=== Continuous Loop Mode - Will restart after completion ===');
     
@@ -1053,17 +1061,9 @@ async function main() {
                 if (existingCount > 0) {
                     console.log(`📊 Found ${existingCount} existing girls in ${OUTPUT_FILE}`);
 
-                    // Use fixed target of 1919 girls
-                    const currentTarget = 1919;
-
-                    if (existingCount >= currentTarget) {
-                        console.log(`🎯 ALREADY COMPLETE! Found ${existingCount} girls, target is ${currentTarget}.`);
-                        console.log(`✅ No need to crawl. Exiting.`);
-                        break;
-                    } else {
-                        console.log(`🔄 Need to continue: ${existingCount}/${currentTarget} girls found.`);
-                        globalCrawlState.totalGirlsCrawled = existingCount; // Start from existing count
-                    }
+                    // We need to run the crawler to get the dynamic target from the website
+                    // So we'll check completion after getting the target
+                    globalCrawlState.totalGirlsCrawled = existingCount; // Start from existing count
                 }
             }
 
