@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crawler Dashboard - Fgirl Crawler</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f6fa;
+            color: #333;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logout-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .controls-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .crawler-control {
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            padding: 1.5rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .crawler-control.running {
+            border-color: #28a745;
+            background: #f8fff9;
+        }
+
+        .crawler-control h3 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .crawler-btn {
+            width: 100%;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 5px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 1rem;
+        }
+
+        .crawler-btn.categories {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .crawler-btn.girls {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .crawler-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .progress-container {
+            margin-top: 1rem;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e1e5e9;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 10px;
+        }
+
+        .progress-text {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 0.5rem;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .status-running {
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+
+        .status-idle {
+            background: #6c757d;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .logs-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-top: 2rem;
+        }
+
+        .logs-container {
+            background: #1e1e1e;
+            color: #fff;
+            padding: 1rem;
+            border-radius: 5px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .log-entry {
+            margin-bottom: 0.25rem;
+        }
+
+        .log-timestamp {
+            color: #888;
+        }
+
+        .log-categories {
+            color: #667eea;
+        }
+
+        .log-girls {
+            color: #f5576c;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .connection-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #28a745;
+        }
+
+        .connection-indicator.disconnected {
+            background: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🕷️ Crawler Dashboard</h1>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <div class="connection-status">
+                <div id="connection-indicator" class="connection-indicator disconnected"></div>
+                <span id="connection-status">Connecting...</span>
+            </div>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Crawler Controls -->
+        <div class="controls-section">
+            <h2 style="margin-bottom: 1.5rem;">Crawler Controls</h2>
+            <div class="controls-grid">
+                <!-- Categories Crawler -->
+                <div class="crawler-control" id="categories-control">
+                    <h3>📋 Categories Crawler</h3>
+                    <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">
+                        Crawls category pages to generate list-girl.csv with profile URLs
+                    </p>
+                    <button class="crawler-btn categories" id="categories-btn" onclick="startCategoriesCrawler()">
+                        Run Crawl Categories
+                    </button>
+                    <div class="progress-container" id="categories-progress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="categories-progress-fill"></div>
+                        </div>
+                        <div class="progress-text" id="categories-progress-text">0%</div>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-value" id="categories-pages">0</div>
+                                <div class="stat-label">Pages</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="categories-girls">0</div>
+                                <div class="stat-label">Girls Found</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Girls Crawler -->
+                <div class="crawler-control" id="girls-control">
+                    <h3>👥 Girls Crawler</h3>
+                    <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">
+                        Processes URLs from list-girl.csv to extract detailed profile data
+                    </p>
+                    <button class="crawler-btn girls" id="girls-btn" onclick="startGirlsCrawler()">
+                        Run Crawl Girls
+                    </button>
+                    <div class="progress-container" id="girls-progress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="girls-progress-fill"></div>
+                        </div>
+                        <div class="progress-text" id="girls-progress-text">0%</div>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-value" id="girls-total">0</div>
+                                <div class="stat-label">Total Profiles</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="girls-processed">0</div>
+                                <div class="stat-label">Processed</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+
+        <!-- Logs Section -->
+        <div class="logs-section">
+            <h2 style="margin-bottom: 1rem;">📝 Live Logs</h2>
+            <div class="logs-container" id="logs-container">
+                <div class="log-entry">
+                    <span class="log-timestamp">[System]</span> Dashboard initialized. Waiting for crawler activity...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Initialize Socket.io connection
+        const socket = io();
+        
+        // Connection status handling
+        socket.on('connect', () => {
+            document.getElementById('connection-indicator').classList.remove('disconnected');
+            document.getElementById('connection-status').textContent = 'Connected';
+            addLog('System', 'Connected to server');
+        });
+        
+        socket.on('disconnect', () => {
+            document.getElementById('connection-indicator').classList.add('disconnected');
+            document.getElementById('connection-status').textContent = 'Disconnected';
+            addLog('System', 'Disconnected from server');
+        });
+        
+        // Crawler state updates
+        socket.on('crawler-state-update', (state) => {
+            updateCrawlerState(state);
+        });
+        
+        // Log updates
+        socket.on('crawler-log', (data) => {
+            addLog(data.type, data.message);
+        });
+        
+
+        
+        // Functions
+        function updateCrawlerState(state) {
+            // Categories crawler
+            const categoriesControl = document.getElementById('categories-control');
+            const categoriesBtn = document.getElementById('categories-btn');
+            const categoriesProgress = document.getElementById('categories-progress');
+            
+            if (state.categories.isRunning) {
+                categoriesControl.classList.add('running');
+                categoriesBtn.disabled = true;
+                categoriesBtn.textContent = 'Running...';
+                categoriesProgress.style.display = 'block';
+                
+                document.getElementById('categories-progress-fill').style.width = state.categories.progress + '%';
+                document.getElementById('categories-progress-text').textContent = state.categories.progress + '%';
+                document.getElementById('categories-pages').textContent = state.categories.currentPage + '/' + state.categories.totalPages;
+                document.getElementById('categories-girls').textContent = state.categories.crawledGirls.toLocaleString();
+            } else {
+                categoriesControl.classList.remove('running');
+                categoriesBtn.disabled = false;
+                categoriesBtn.textContent = 'Run Crawl Categories';
+                if (state.categories.progress === 100) {
+                    categoriesProgress.style.display = 'block';
+                } else {
+                    categoriesProgress.style.display = 'none';
+                }
+            }
+            
+            // Girls crawler
+            const girlsControl = document.getElementById('girls-control');
+            const girlsBtn = document.getElementById('girls-btn');
+            const girlsProgress = document.getElementById('girls-progress');
+            
+            if (state.girls.isRunning) {
+                girlsControl.classList.add('running');
+                girlsBtn.disabled = true;
+                girlsBtn.textContent = 'Running...';
+                girlsProgress.style.display = 'block';
+                
+                document.getElementById('girls-progress-fill').style.width = state.girls.progress + '%';
+                document.getElementById('girls-progress-text').textContent = state.girls.progress + '%';
+                document.getElementById('girls-total').textContent = state.girls.totalProfiles.toLocaleString();
+                document.getElementById('girls-processed').textContent = state.girls.processedProfiles.toLocaleString();
+            } else {
+                girlsControl.classList.remove('running');
+                girlsBtn.disabled = false;
+                girlsBtn.textContent = 'Run Crawl Girls';
+                if (state.girls.progress === 100) {
+                    girlsProgress.style.display = 'block';
+                } else {
+                    girlsProgress.style.display = 'none';
+                }
+            }
+        }
+        
+        function addLog(type, message) {
+            const logsContainer = document.getElementById('logs-container');
+            const timestamp = new Date().toLocaleTimeString();
+            const logClass = type === 'categories' ? 'log-categories' : type === 'girls' ? 'log-girls' : '';
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> <span class="${logClass}">[${type.toUpperCase()}]</span> ${message}`;
+            
+            logsContainer.appendChild(logEntry);
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+            
+            // Keep only last 100 log entries
+            while (logsContainer.children.length > 100) {
+                logsContainer.removeChild(logsContainer.firstChild);
+            }
+        }
+        
+        async function startCategoriesCrawler() {
+            try {
+                const response = await fetch('/api/start-categories-crawler', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error);
+                }
+                
+                addLog('System', 'Categories crawler started successfully');
+            } catch (error) {
+                addLog('System', 'Error starting categories crawler: ' + error.message);
+                alert('Error starting categories crawler: ' + error.message);
+            }
+        }
+        
+        async function startGirlsCrawler() {
+            try {
+                const response = await fetch('/api/start-girls-crawler', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error);
+                }
+                
+                addLog('System', 'Girls crawler started successfully');
+            } catch (error) {
+                addLog('System', 'Error starting girls crawler: ' + error.message);
+                alert('Error starting girls crawler: ' + error.message);
+            }
+        }
+        
+
+        
+        function logout() {
+            window.location.href = '/logout';
+        }
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', () => {
+            // Dashboard initialization complete
+        });
+    </script>
+</body>
+</html>

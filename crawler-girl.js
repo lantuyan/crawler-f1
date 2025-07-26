@@ -470,7 +470,9 @@ async function initBrowser() {
 // Function to read URLs from CSV
 function readUrlsFromCsv() {
     try {
-        const csvContent = fs.readFileSync('list-girl.csv', 'utf8');
+        const path = require('path');
+        const csvPath = path.resolve('list-girl.csv');
+        const csvContent = fs.readFileSync(csvPath, 'utf8');
         const lines = csvContent.split('\n');
         const urls = [];
 
@@ -1906,11 +1908,58 @@ function logCrawlingStats() {
     }
 }
 
+// Web interface compatible function
+async function runGirlsCrawlerForWeb() {
+    console.log('=== Fgirl Girls Crawler Started (Web Interface) ===');
+    console.log('=== Multi-threaded Profile Crawling ===');
+    console.log('=== Processing URLs from list-girl.csv ===');
+
+    try {
+        const path = require('path');
+        const listGirlPath = path.resolve('list-girl.csv');
+
+        // Check if list-girl.csv exists
+        if (!fs.existsSync(listGirlPath)) {
+            throw new Error('list-girl.csv not found. Please run the categories crawler first.');
+        }
+
+        // Count total URLs to process
+        const csvContent = fs.readFileSync(listGirlPath, 'utf8');
+        const lines = csvContent.split('\n').filter(line => line.trim() !== '');
+        const totalUrls = lines.length - 1; // Exclude header
+        console.log(`📊 Found ${totalUrls} URLs to process in list-girl.csv`);
+
+        const startTime = Date.now();
+        console.log(`\n🚀 Starting girls crawler for web interface...`);
+
+        // Run the multi-threaded crawler
+        const results = await crawlProfilesMultiThreaded();
+
+        const endTime = Date.now();
+        const duration = ((endTime - startTime) / 1000).toFixed(2);
+
+        console.log(`\n✅ Girls crawler completed in ${duration} seconds`);
+        console.log(`📁 Results saved to: ${OUTPUT_FILE}`);
+
+        return {
+            success: true,
+            duration: duration,
+            totalUrls: totalUrls,
+            results: results
+        };
+
+    } catch (error) {
+        console.error(`Error in web girls crawler:`, error);
+        throw error;
+    }
+}
+
 // Enhanced module exports with new Cloudflare-aware functions
 module.exports = {
     // Main crawler functions
     crawlProfiles,
     crawlProfilesMultiThreaded,
+    runGirlsCrawlerForWeb,
 
     // Data extraction functions
     extractProfileData: extractProfileDataWithRetry, // Use the retry-enabled version as default

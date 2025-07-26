@@ -1,10 +1,12 @@
 {
   "name": "fgirl-crawler",
   "version": "1.0.0",
-  "description": "Web crawler for fgirl.ch escort profiles",
-  "main": "crawler.js",
+  "description": "Web crawler for fgirl.ch escort profiles with web interface",
+  "main": "server.js",
   "scripts": {
-    "start": "node crawler.js",
+    "start": "node server.js",
+    "dev": "node server.js",
+    "crawler": "node crawler.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
@@ -12,7 +14,13 @@
     "cheerio": "^1.0.0-rc.12",
     "csv-writer": "^1.6.0",
     "axios": "^1.6.0",
-    "https-proxy-agent": "^7.0.2"
+    "https-proxy-agent": "^7.0.2",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "socket.io": "^4.7.4",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0"
   },
   "author": "",
   "license": "ISC"

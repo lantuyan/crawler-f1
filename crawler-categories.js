@@ -181,109 +181,110 @@ class FgirlCategoryCrawler {
     }
 
     async checkTotalGirls() {
-        try {
-            console.log('Checking total number of girls from homepage...');
+        let attempt = 1;
+        while (true) {
+            try {
+                console.log(`Checking total number of girls from girls listing page... (attempt ${attempt})`);
 
-            // Navigate to homepage to get total girls count
-            await this.page.goto('https://www.en.fgirl.ch/', {
-                waitUntil: 'domcontentloaded',
-                timeout: 15000
-            });
+                // Navigate to girls listing page to get total girls count
+                await this.page.goto('https://www.en.fgirl.ch/filles/', {
+                    waitUntil: 'domcontentloaded',
+                    timeout: 15000
+                });
 
-            await this.page.waitForTimeout(1000);
-
-            // Extract total girls count from the card
-            const totalGirls = await this.page.evaluate(() => {
-                // Look for the card with "Girls" text
-                const cardBodies = document.querySelectorAll('.card-body');
-                for (const cardBody of cardBodies) {
-                    const cardTitle = cardBody.querySelector('.card-title');
-                    if (cardTitle && cardTitle.textContent.includes('Girls')) {
-                        const span = cardTitle.querySelector('span');
-                        if (span) {
-                            const numberText = span.textContent.trim().replace(/,/g, '');
+                // Extract total girls count from the page subtitle
+                const totalGirls = await this.page.evaluate(() => {
+                    // Look for the page subtitle element that contains the results count
+                    const pageSubtitle = document.querySelector('p.page-subtitle.mt-2.mt-md-0.mb-2');
+                    if (pageSubtitle) {
+                        const text = pageSubtitle.textContent.trim();
+                        // Extract number from text like "1,972 results"
+                        const match = text.match(/^([\d,]+)\s+results?/i);
+                        if (match) {
+                            const numberText = match[1].replace(/,/g, '');
                             const number = parseInt(numberText);
                             if (!isNaN(number)) {
                                 return number;
                             }
                         }
                     }
+                    return 0;
+                });
+
+                if (totalGirls > 0) {
+                    console.log(`✓ Total girls found on website: ${totalGirls.toLocaleString()}`);
+                    return totalGirls;
+                } else {
+                    console.log(`⚠️ Could not extract total girls count on attempt ${attempt}, retrying...`);
+                    attempt++;
                 }
-                return 0;
-            });
 
-            if (totalGirls > 0) {
-                console.log(`✓ Total girls found on website: ${totalGirls.toLocaleString()}`);
-                return totalGirls;
-            } else {
-                console.log('⚠️ Could not extract total girls count, using default');
-                return 2000; // Fallback default
+            } catch (error) {
+                console.error(`Error checking total girls on attempt ${attempt}:`, error.message);
+                attempt++;
             }
-
-        } catch (error) {
-            console.error('Error checking total girls:', error.message);
-            return 2000; // Fallback default
         }
     }
 
     async checkTotalPages() {
-        try {
-            console.log('Checking total number of pages from girls listing...');
+        let attempt = 1;
+        while (true) {
+            try {
+                console.log(`Checking total number of pages from girls listing... (attempt ${attempt})`);
 
-            // Navigate to girls listing page to get total pages
-            await this.page.goto('https://www.en.fgirl.ch/filles/', {
-                waitUntil: 'domcontentloaded',
-                timeout: 15000
-            });
+                // Navigate to girls listing page to get total pages
+                await this.page.goto('https://www.en.fgirl.ch/filles/', {
+                    waitUntil: 'domcontentloaded',
+                    timeout: 15000
+                });
 
-            await this.page.waitForTimeout(1000);
+                // Extract total pages from pagination
+                const totalPages = await this.page.evaluate(() => {
+                    // Look for pagination links
+                    const paginationLinks = document.querySelectorAll('.pagination a[href*="page="]');
+                    let maxPage = 0;
 
-            // Extract total pages from pagination
-            const totalPages = await this.page.evaluate(() => {
-                // Look for pagination links
-                const paginationLinks = document.querySelectorAll('.pagination a[href*="page="]');
-                let maxPage = 0;
+                    for (const link of paginationLinks) {
+                        const href = link.getAttribute('href');
+                        if (href) {
+                            const pageMatch = href.match(/page=(\d+)/);
+                            if (pageMatch) {
+                                const pageNum = parseInt(pageMatch[1]);
+                                if (pageNum > maxPage) {
+                                    maxPage = pageNum;
+                                }
+                            }
+                        }
+                    }
 
-                for (const link of paginationLinks) {
-                    const href = link.getAttribute('href');
-                    if (href) {
-                        const pageMatch = href.match(/page=(\d+)/);
-                        if (pageMatch) {
-                            const pageNum = parseInt(pageMatch[1]);
-                            if (pageNum > maxPage) {
+                    // Also check for direct page number text in pagination
+                    const pageItems = document.querySelectorAll('.pagination .page-item');
+                    for (const item of pageItems) {
+                        const link = item.querySelector('a');
+                        if (link) {
+                            const text = link.textContent.trim();
+                            const pageNum = parseInt(text);
+                            if (!isNaN(pageNum) && pageNum > maxPage) {
                                 maxPage = pageNum;
                             }
                         }
                     }
+
+                    return maxPage;
+                });
+
+                if (totalPages > 0) {
+                    console.log(`✓ Total pages found: ${totalPages}`);
+                    return totalPages;
+                } else {
+                    console.log(`⚠️ Could not extract total pages on attempt ${attempt}, retrying...`);
+                    attempt++;
                 }
 
-                // Also check for direct page number text in pagination
-                const pageItems = document.querySelectorAll('.pagination .page-item');
-                for (const item of pageItems) {
-                    const link = item.querySelector('a');
-                    if (link) {
-                        const text = link.textContent.trim();
-                        const pageNum = parseInt(text);
-                        if (!isNaN(pageNum) && pageNum > maxPage) {
-                            maxPage = pageNum;
-                        }
-                    }
-                }
-
-                return maxPage;
-            });
-
-            if (totalPages > 0) {
-                console.log(`✓ Total pages found: ${totalPages}`);
-                return totalPages;
-            } else {
-                console.log('⚠️ Could not extract total pages, using default');
-                return 125; // Fallback default
+            } catch (error) {
+                console.error(`Error checking total pages on attempt ${attempt}:`, error.message);
+                attempt++;
             }
-
-        } catch (error) {
-            console.error('Error checking total pages:', error.message);
-            return 125; // Fallback default
         }
     }
 
@@ -338,7 +339,7 @@ class FgirlCategoryCrawler {
 
     async extractProfileLinks(url) {
         let retryCount = 0;
-        const maxRetries = 2; // Reduced retries for speed
+        const maxRetries = 10; // Reduced retries for speed
         
         while (retryCount < maxRetries) {
             try {
@@ -846,15 +847,21 @@ class FgirlCategoryCrawler {
     getCurrentCSVCount() {
         try {
             const fs = require('fs');
-            if (fs.existsSync(OUTPUT_FILE)) {
-                const existingContent = fs.readFileSync(OUTPUT_FILE, 'utf8');
+            const path = require('path');
+            const csvPath = path.resolve(OUTPUT_FILE);
+
+            if (fs.existsSync(csvPath)) {
+                const existingContent = fs.readFileSync(csvPath, 'utf8');
                 const existingLines = existingContent.split('\n').filter(line => line.trim() !== '');
-                return existingLines.length - 1; // Subtract header
+                const count = existingLines.length - 1; // Subtract header
+                console.log(`📊 Found ${count} existing girls in ${OUTPUT_FILE}`);
+                return count;
             }
+            console.log(`📊 No existing CSV file found at ${csvPath}`);
             return 0;
         } catch (error) {
             console.error('Error reading CSV count:', error);
-            return 0;
+            return -1; // Return -1 to indicate error
         }
     }
 
@@ -1116,9 +1123,137 @@ async function main() {
     process.exit(0);
 }
 
+// Web interface compatible function
+async function runCategoriesCrawlerForWeb() {
+    console.log('=== Fgirl Category Crawler Started (Web Interface) ===');
+    console.log('=== Multi-threaded Mode with Real-time CSV Writing ===');
+    console.log('=== Dynamic Target: Will fetch actual number from website ===');
+    console.log('=== 10 threads with intelligent stopping when target reached ===');
+    console.log('=== Continuous Loop Mode - Will restart after completion ===');
+
+    const crawler = new FgirlCategoryCrawler();
+
+    try {
+        // Initialize browser first to check totals
+        await crawler.init();
+
+        console.log('🔍 Checking website for total pages...');
+        totalPagesGirl = await crawler.checkTotalPages();
+
+        console.log('🔍 Checking website for total girls count...');
+        totalGirlsExpected = await crawler.checkTotalGirls();
+
+        // Get current count from CSV file
+        const currentCSVCount = crawler.getCurrentCSVCount();
+
+        console.log(`🎯 Fixed Target: ${totalGirlsExpected.toLocaleString()} girls across ${totalPagesGirl} pages`);
+        console.log(`📊 Current CSV count: ${currentCSVCount} girls`);
+
+        // Check if target is already reached
+        if (currentCSVCount >= totalGirlsExpected) {
+            console.log(`🎯 ALREADY COMPLETE! Found ${currentCSVCount} girls, target is ${totalGirlsExpected}.`);
+            console.log(`✅ No need to crawl. Target already reached.`);
+            await crawler.cleanup();
+            return {
+                success: true,
+                totalCrawled: currentCSVCount,
+                targetReached: true,
+                duration: 0
+            };
+        }
+
+        // Clean up initial browser before starting multi-threaded crawl
+        await crawler.cleanup();
+
+        // Continuous crawling loop (same as command-line version)
+        let crawlCount = 0;
+        let totalDuration = 0;
+
+        console.log('=== Continuous Loop Mode - Will restart after completion ===');
+
+        while (true) {
+            try {
+                crawlCount++;
+                const startTime = Date.now();
+                console.log(`\n=== Starting Crawl Cycle #${crawlCount} (Web Interface) ===`);
+                console.log(`Real-time CSV writing to: ${OUTPUT_FILE}`);
+
+                // Check if we already have enough data from previous runs
+                const fs = require('fs');
+                if (fs.existsSync(OUTPUT_FILE)) {
+                    const existingContent = fs.readFileSync(OUTPUT_FILE, 'utf8');
+                    const existingLines = existingContent.split('\n').filter(line => line.trim() !== '');
+                    const existingCount = existingLines.length - 1; // Subtract header
+
+                    if (existingCount > 0) {
+                        console.log(`📊 Found ${existingCount} existing girls in ${OUTPUT_FILE}`);
+                        globalCrawlState.totalGirlsCrawled = existingCount; // Start from existing count
+                    }
+                }
+
+                // Run multi-threaded crawl with real-time CSV writing
+                const results = await crawler.multiThreadedCrawlRealtime();
+
+                const endTime = Date.now();
+                const duration = (endTime - startTime) / 1000;
+                totalDuration += duration;
+
+                console.log(`\n=== Crawl Cycle #${crawlCount} Summary (Web Interface) ===`);
+                console.log(`Duration: ${duration.toFixed(2)} seconds`);
+                console.log(`Target girls: ${totalGirlsExpected.toLocaleString()}`);
+                console.log(`Girls crawled: ${globalCrawlState.totalGirlsCrawled.toLocaleString()}`);
+                console.log(`Total profile links: ${results.length}`);
+                console.log(`Pages checked: ${totalPagesGirl}`);
+                console.log(`Output file: ${OUTPUT_FILE}`);
+                console.log('=== Real-time CSV Writing Completed Successfully ===');
+
+                // Check if target has been reached by checking CSV file count
+                const finalCSVCount = crawler.getCurrentCSVCount();
+                if (totalGirlsExpected > 0 && finalCSVCount >= totalGirlsExpected) {
+                    console.log(`\n🎯 TARGET REACHED! Successfully crawled ${finalCSVCount}/${totalGirlsExpected} girls in CSV file.`);
+                    console.log(`✅ Crawling completed successfully.`);
+                    console.log(`📁 Final results saved to: ${OUTPUT_FILE}`);
+
+                    return {
+                        success: true,
+                        totalCrawled: finalCSVCount,
+                        targetReached: true,
+                        duration: totalDuration.toFixed(2),
+                        cycles: crawlCount
+                    };
+                }
+
+                // Wait before starting next cycle (shorter wait for web interface)
+                const waitTime = 5000; // 5 seconds for web interface
+                console.log(`\n⏳ Target not yet reached. Waiting ${waitTime / 1000} seconds before next crawl cycle...`);
+                console.log(`📊 Progress: ${finalCSVCount}/${totalGirlsExpected} girls crawled so far.`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+
+            } catch (cycleError) {
+                console.error(`Error in crawl cycle #${crawlCount}:`, cycleError);
+
+                // Wait before retrying (shorter wait for web interface)
+                const errorWaitTime = 30 * 1000; // 30 seconds
+                console.log(`⚠️  Waiting ${errorWaitTime / 1000} seconds before retry...`);
+                await new Promise(resolve => setTimeout(resolve, errorWaitTime));
+            }
+        }
+
+    } catch (error) {
+        console.error(`Error in web crawler:`, error);
+        throw error;
+    } finally {
+        await crawler.cleanup();
+        console.log('✅ Cleanup completed.');
+    }
+}
+
 // Run the crawler
 if (require.main === module) {
     main();
 }
 
-module.exports = FgirlCategoryCrawler;
+module.exports = {
+    FgirlCategoryCrawler,
+    runCategoriesCrawlerForWeb
+};
