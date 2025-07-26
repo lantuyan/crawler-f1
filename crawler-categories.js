@@ -41,17 +41,36 @@ class FgirlCategoryCrawler {
 
     async init() {
         console.log('Initializing browser with proxy...');
-        
-        // Check for Chrome executable paths on macOS
+
+        // Check for Chrome executable paths (Linux-first, cross-platform)
         const fs = require('fs');
+        const os = require('os');
+        const platform = os.platform();
+
+        // Prioritize Linux paths for production deployment
         const chromePaths = [
+            // Linux paths (prioritized for production)
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium',
+            '/snap/bin/chromium',
+            '/opt/google/chrome/chrome',
+            '/opt/google/chrome/google-chrome',
+            '/usr/local/bin/google-chrome',
+            '/usr/local/bin/chromium',
+            '/usr/local/bin/chromium-browser',
+            // macOS paths (for development)
             '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
             '/Applications/Chromium.app/Contents/MacOS/Chromium',
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium-browser'
+            // Windows paths (for completeness)
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
         ];
-        
+
         let executablePath = null;
+        console.log(`Detecting Chrome on platform: ${platform}`);
+
         for (const path of chromePaths) {
             try {
                 if (fs.existsSync(path)) {
@@ -63,44 +82,102 @@ class FgirlCategoryCrawler {
                 // Continue to next path
             }
         }
-        
+
         if (!executablePath) {
             console.log('No Chrome executable found in standard locations, using Puppeteer bundled Chromium');
+            console.log('For Linux servers, consider installing: sudo apt-get install google-chrome-stable');
         }
         
-        // Optimized browser configurations for speed
+        // Linux-optimized browser configurations for headless operation
         const configurations = [
             {
-                name: 'fast-proxy',
+                name: 'linux-headless-proxy',
                 config: {
                     headless: "new",
                     args: [
+                        // Essential Linux headless arguments
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
                         '--disable-dev-shm-usage',
                         '--disable-gpu',
+                        '--disable-software-rasterizer',
+                        '--disable-background-timer-throttling',
+                        '--disable-backgrounding-occluded-windows',
+                        '--disable-renderer-backgrounding',
+                        '--disable-features=TranslateUI',
+                        '--disable-ipc-flooding-protection',
+                        // Memory and performance optimizations for Linux servers
+                        '--memory-pressure-off',
+                        '--max_old_space_size=4096',
+                        '--no-zygote',
+                        '--single-process',
+                        // Display and font handling for headless Linux
+                        '--disable-extensions',
+                        '--disable-plugins',
                         '--disable-images',
                         '--disable-javascript',
-                        '--disable-plugins',
-                        '--disable-extensions',
-                        '--proxy-server=155.254.39.107:6065'
+                        '--virtual-time-budget=5000',
+                        // Proxy configuration
+                        '--proxy-server=155.254.39.107:6065',
+                        // Additional Linux-specific stability arguments
+                        '--disable-features=VizDisplayCompositor',
+                        '--disable-features=AudioServiceOutOfProcess',
+                        '--disable-features=VizServiceDisplayCompositor',
+                        '--disable-crash-reporter',
+                        '--disable-logging',
+                        '--disable-permissions-api',
+                        '--disable-web-security',
+                        '--allow-running-insecure-content'
                     ],
-                    timeout: 5000
+                    timeout: 10000
                 }
             },
             {
-                name: 'fast-no-proxy',
+                name: 'linux-headless-no-proxy',
+                config: {
+                    headless: "new",
+                    args: [
+                        // Essential Linux headless arguments
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu',
+                        '--disable-software-rasterizer',
+                        '--disable-background-timer-throttling',
+                        '--disable-backgrounding-occluded-windows',
+                        '--disable-renderer-backgrounding',
+                        '--disable-features=TranslateUI',
+                        '--disable-ipc-flooding-protection',
+                        // Memory and performance optimizations for Linux servers
+                        '--memory-pressure-off',
+                        '--max_old_space_size=4096',
+                        '--no-zygote',
+                        '--single-process',
+                        // Display and font handling for headless Linux
+                        '--disable-extensions',
+                        '--disable-plugins',
+                        '--disable-images',
+                        '--disable-javascript',
+                        '--virtual-time-budget=5000',
+                        // Additional Linux-specific stability arguments
+                        '--disable-features=VizDisplayCompositor',
+                        '--disable-features=AudioServiceOutOfProcess',
+                        '--disable-features=VizServiceDisplayCompositor',
+                        '--disable-crash-reporter',
+                        '--disable-logging',
+                        '--disable-permissions-api'
+                    ],
+                    timeout: 10000
+                }
+            },
+            {
+                name: 'fallback-minimal',
                 config: {
                     headless: "new",
                     args: [
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-gpu',
-                        '--disable-images',
-                        '--disable-javascript',
-                        '--disable-plugins',
-                        '--disable-extensions'
+                        '--disable-dev-shm-usage'
                     ],
                     timeout: 5000
                 }

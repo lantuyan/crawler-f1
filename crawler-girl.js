@@ -316,19 +316,38 @@ const csvWriter = createCsvWriter({
 // Global variables for real-time CSV writing
 let csvWriteLock = false; // Thread-safe CSV writing lock
 
-// Browser initialization with proxy support (based on crawler-categories.js)
+// Browser initialization with proxy support (Linux-compatible)
 async function initBrowser() {
     console.log('Initializing browser with proxy...');
 
-    // Check for Chrome executable paths on macOS
+    // Check for Chrome executable paths (Linux-first, cross-platform)
+    const os = require('os');
+    const platform = os.platform();
+
+    // Prioritize Linux paths for production deployment
     const chromePaths = [
+        // Linux paths (prioritized for production)
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/snap/bin/chromium',
+        '/opt/google/chrome/chrome',
+        '/opt/google/chrome/google-chrome',
+        '/usr/local/bin/google-chrome',
+        '/usr/local/bin/chromium',
+        '/usr/local/bin/chromium-browser',
+        // macOS paths (for development)
         '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
         '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium-browser'
+        // Windows paths (for completeness)
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
     ];
 
     let executablePath = null;
+    console.log(`Detecting Chrome on platform: ${platform}`);
+
     for (const path of chromePaths) {
         try {
             if (fs.existsSync(path)) {
@@ -343,26 +362,37 @@ async function initBrowser() {
 
     if (!executablePath) {
         console.log('No Chrome executable found in standard locations, using Puppeteer bundled Chromium');
+        console.log('For Linux servers, consider installing: sudo apt-get install google-chrome-stable');
     }
 
-    // Enhanced browser configurations with anti-detection measures
+    // Linux-optimized browser configurations with enhanced anti-detection
     const configurations = [
         {
-            name: 'enhanced-proxy',
+            name: 'linux-enhanced-proxy',
             config: {
                 headless: "new",
                 args: [
+                    // Essential Linux headless arguments
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    // Memory and performance optimizations for Linux servers
+                    '--memory-pressure-off',
+                    '--max_old_space_size=4096',
+                    '--no-zygote',
+                    // Display and rendering optimizations
                     '--disable-images',
                     '--disable-plugins',
                     '--disable-extensions',
+                    // Proxy configuration
                     '--proxy-server=155.254.39.107:6065',
-                    // Anti-detection arguments
+                    // Enhanced anti-detection arguments for Linux
                     '--disable-blink-features=AutomationControlled',
                     '--disable-features=VizDisplayCompositor',
+                    '--disable-features=AudioServiceOutOfProcess',
+                    '--disable-features=VizServiceDisplayCompositor',
                     '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
                     '--disable-renderer-backgrounding',
@@ -377,26 +407,40 @@ async function initBrowser() {
                     '--disable-sync',
                     '--disable-web-security',
                     '--disable-features=site-per-process',
-                    '--window-size=1366,768'
+                    '--window-size=1366,768',
+                    // Additional Linux stability arguments
+                    '--disable-crash-reporter',
+                    '--disable-logging',
+                    '--disable-permissions-api',
+                    '--virtual-time-budget=5000'
                 ],
                 timeout: 15000
             }
         },
         {
-            name: 'enhanced-no-proxy',
+            name: 'linux-enhanced-no-proxy',
             config: {
                 headless: "new",
                 args: [
+                    // Essential Linux headless arguments
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    // Memory and performance optimizations for Linux servers
+                    '--memory-pressure-off',
+                    '--max_old_space_size=4096',
+                    '--no-zygote',
+                    // Display and rendering optimizations
                     '--disable-images',
                     '--disable-plugins',
                     '--disable-extensions',
-                    // Anti-detection arguments (same as proxy version)
+                    // Enhanced anti-detection arguments for Linux
                     '--disable-blink-features=AutomationControlled',
                     '--disable-features=VizDisplayCompositor',
+                    '--disable-features=AudioServiceOutOfProcess',
+                    '--disable-features=VizServiceDisplayCompositor',
                     '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
                     '--disable-renderer-backgrounding',
@@ -411,9 +455,26 @@ async function initBrowser() {
                     '--disable-sync',
                     '--disable-web-security',
                     '--disable-features=site-per-process',
-                    '--window-size=1366,768'
+                    '--window-size=1366,768',
+                    // Additional Linux stability arguments
+                    '--disable-crash-reporter',
+                    '--disable-logging',
+                    '--disable-permissions-api',
+                    '--virtual-time-budget=5000'
                 ],
                 timeout: 15000
+            }
+        },
+        {
+            name: 'fallback-minimal',
+            config: {
+                headless: "new",
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage'
+                ],
+                timeout: 10000
             }
         }
     ];

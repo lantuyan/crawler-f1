@@ -1,12 +1,30 @@
 {
   "name": "fgirl-crawler",
   "version": "1.0.0",
-  "description": "Web crawler for fgirl.ch escort profiles",
+  "description": "Web crawler for fgirl.ch escort profiles - Linux-compatible",
   "main": "crawler.js",
   "scripts": {
     "start": "node crawler.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start:categories": "node crawler-categories.js",
+    "start:girl": "node crawler-girl.js",
+    "test": "node test-linux-compatibility.js",
+    "check-deps": "node linux-deps-check.js",
+    "setup-linux": "npm run check-deps && npm run install-chrome-linux",
+    "install-chrome-linux": "bash -c 'if ! command -v google-chrome &> /dev/null && ! command -v chromium-browser &> /dev/null; then echo \"Installing Google Chrome...\"; wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add - && echo \"deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main\" | sudo tee /etc/apt/sources.list.d/google-chrome.list && sudo apt update && sudo apt install -y google-chrome-stable; else echo \"Chrome/Chromium already installed\"; fi'",
+    "install-deps-ubuntu": "sudo apt update && sudo apt install -y ca-certificates fonts-liberation libappindicator3-1 libasound2 libatk-bridge2.0-0 libdrm2 libgtk-3-0 libnspr4 libnss3 libxss1 libxtst6 xdg-utils",
+    "install-deps-centos": "sudo yum install -y alsa-lib atk cups-libs gtk3 libdrm libX11 libXcomposite libXdamage libXext libXfixes libXrandr libXss libXtst nss pango",
+    "production-start": "NODE_ENV=production node crawler-categories.js",
+    "production-girl": "NODE_ENV=production node crawler-girl.js",
+    "health-check": "node -e \"console.log('Node.js version:', process.version); console.log('Platform:', process.platform); console.log('Architecture:', process.arch); console.log('Memory:', Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB');\""
   },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
+  ],
   "dependencies": {
     "puppeteer": "^21.5.0",
     "cheerio": "^1.0.0-rc.12",
@@ -14,6 +32,14 @@
     "axios": "^1.6.0",
     "https-proxy-agent": "^7.0.2"
   },
+  "keywords": [
+    "crawler",
+    "web-scraping",
+    "puppeteer",
+    "linux",
+    "headless",
+    "production"
+  ],
   "author": "",
   "license": "ISC"
 }
