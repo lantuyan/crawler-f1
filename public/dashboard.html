@@ -72,6 +72,9 @@
             border-radius: 10px;
             padding: 1.5rem;
             transition: border-color 0.3s ease;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
         }
 
         .crawler-control.running {
@@ -111,8 +114,32 @@
             cursor: not-allowed;
         }
 
+        .crawler-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            background: #f8f9fa;
+            border-left: 4px solid #6c757d;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #6c757d;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         .progress-container {
             margin-top: 1rem;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .progress-bar {
@@ -352,13 +379,13 @@
                     <p style="margin-bottom: 1rem; color: #e74c3c; font-size: 0.85rem; font-weight: 500;">
                         ⚠️ Will clear existing list-girl.csv before starting
                     </p>
-                    <button class="crawler-btn categories" id="categories-btn" onclick="startCategoriesCrawler()">
+                    <button class="crawler-btn categories" id="categories-toggle-btn" onclick="toggleCategoriesCrawler()">
                         Run Crawl Categories
                     </button>
-                    <button class="crawler-btn categories stop-btn" id="categories-stop-btn" onclick="stopCategoriesCrawler()" style="display: none; background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);">
-                        Stop Crawling
-                    </button>
                     <div class="progress-container" id="categories-progress" style="display: none;">
+                        <div class="status-indicator" id="categories-status" style="display: none;">
+                            ⏸️ Stopped - Last Results
+                        </div>
                         <div class="progress-bar">
                             <div class="progress-fill" id="categories-progress-fill"></div>
                         </div>
@@ -416,8 +443,8 @@
         <div class="downloads-section">
             <h2 style="margin-bottom: 1.5rem;">📥 Download Results</h2>
             <div class="downloads-grid">
-                <!-- Categories Results Download -->
-                <div class="download-control" id="categories-download">
+                <!-- Categories Results Download - HIDDEN -->
+                <div class="download-control" id="categories-download" style="display: none;">
                     <h3>📋 Categories Results</h3>
                     <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">
                         Download list-girl.csv containing profile URLs from categories crawler
@@ -488,10 +515,25 @@
         // Handle crawler stopped event
         socket.on('stopped', (data) => {
             if (data.type === 'categories') {
-                // Reset stop button state
-                const stopBtn = document.getElementById('categories-stop-btn');
-                stopBtn.disabled = false;
-                stopBtn.textContent = 'Stop Crawling';
+                // Reset toggle button state but keep progress visible
+                const toggleBtn = document.getElementById('categories-toggle-btn');
+                const progressContainer = document.getElementById('categories-progress');
+                const statusIndicator = document.getElementById('categories-status');
+
+                toggleBtn.disabled = false;
+                toggleBtn.textContent = 'Run Crawl Categories';
+                toggleBtn.style.background = '';
+
+                // Keep progress information visible after stopping
+                if (progressContainer) {
+                    progressContainer.style.display = 'block';
+                }
+
+                // Show status indicator that crawler was stopped
+                if (statusIndicator) {
+                    statusIndicator.style.display = 'block';
+                }
+
                 addLog('System', 'Categories crawler stopped successfully');
             }
         });
@@ -502,16 +544,17 @@
         function updateCrawlerState(state) {
             // Categories crawler
             const categoriesControl = document.getElementById('categories-control');
-            const categoriesBtn = document.getElementById('categories-btn');
-            const categoriesStopBtn = document.getElementById('categories-stop-btn');
+            const categoriesToggleBtn = document.getElementById('categories-toggle-btn');
             const categoriesProgress = document.getElementById('categories-progress');
+            const categoriesStatus = document.getElementById('categories-status');
 
             if (state.categories.isRunning) {
                 categoriesControl.classList.add('running');
-                categoriesBtn.disabled = true;
-                categoriesBtn.textContent = 'Running...';
-                categoriesStopBtn.style.display = 'block';
+                categoriesToggleBtn.disabled = false;
+                categoriesToggleBtn.textContent = 'Stop Crawling';
+                categoriesToggleBtn.style.background = 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)';
                 categoriesProgress.style.display = 'block';
+                categoriesStatus.style.display = 'none'; // Hide status indicator when running
 
                 document.getElementById('categories-progress-fill').style.width = state.categories.progress + '%';
                 document.getElementById('categories-progress-text').textContent = state.categories.progress + '%';
@@ -520,17 +563,21 @@
                 document.getElementById('categories-expected').textContent = state.categories.totalGirlsExpected.toLocaleString();
             } else {
                 categoriesControl.classList.remove('running');
-                categoriesBtn.disabled = false;
-                categoriesBtn.textContent = 'Run Crawl Categories';
-                categoriesStopBtn.style.display = 'none';
-                if (state.categories.progress === 100) {
+                categoriesToggleBtn.disabled = false;
+                categoriesToggleBtn.textContent = 'Run Crawl Categories';
+                categoriesToggleBtn.style.background = '';
+
+                // Always keep progress visible if there's any data to show
+                if (state.categories.progress > 0 || state.categories.crawledGirls > 0) {
                     categoriesProgress.style.display = 'block';
+                    categoriesStatus.style.display = 'block'; // Show status indicator when stopped with data
                     // Update stats even when not running
                     document.getElementById('categories-pages').textContent = state.categories.currentPage + '/' + state.categories.totalPages;
                     document.getElementById('categories-girls').textContent = state.categories.crawledGirls.toLocaleString();
                     document.getElementById('categories-expected').textContent = state.categories.totalGirlsExpected.toLocaleString();
                 } else {
                     categoriesProgress.style.display = 'none';
+                    categoriesStatus.style.display = 'none';
                 }
             }
             
@@ -538,21 +585,29 @@
             const girlsControl = document.getElementById('girls-control');
             const girlsBtn = document.getElementById('girls-btn');
             const girlsProgress = document.getElementById('girls-progress');
-            
+
             if (state.girls.isRunning) {
                 girlsControl.classList.add('running');
                 girlsBtn.disabled = true;
                 girlsBtn.textContent = 'Running...';
                 girlsProgress.style.display = 'block';
-                
+
                 document.getElementById('girls-progress-fill').style.width = state.girls.progress + '%';
                 document.getElementById('girls-progress-text').textContent = state.girls.progress + '%';
                 document.getElementById('girls-total').textContent = state.girls.totalProfiles.toLocaleString();
                 document.getElementById('girls-processed').textContent = state.girls.processedProfiles.toLocaleString();
             } else {
                 girlsControl.classList.remove('running');
-                girlsBtn.disabled = false;
-                girlsBtn.textContent = 'Run Crawl Girls';
+
+                // Disable girls button if categories crawler is running
+                if (state.categories.isRunning) {
+                    girlsBtn.disabled = true;
+                    girlsBtn.textContent = 'Categories Running...';
+                } else {
+                    girlsBtn.disabled = false;
+                    girlsBtn.textContent = 'Run Crawl Girls';
+                }
+
                 if (state.girls.progress === 100) {
                     girlsProgress.style.display = 'block';
                 } else {
@@ -582,22 +637,53 @@
             }
         }
         
-        async function startCategoriesCrawler() {
-            try {
-                const response = await fetch('/api/start-categories-crawler', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error);
+        async function toggleCategoriesCrawler() {
+            const toggleBtn = document.getElementById('categories-toggle-btn');
+            const isRunning = toggleBtn.textContent === 'Stop Crawling';
+
+            if (isRunning) {
+                // Stop the crawler
+                try {
+                    toggleBtn.disabled = true;
+                    toggleBtn.textContent = 'Stopping...';
+
+                    const response = await fetch('/api/stop-categories-crawler', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error);
+                    }
+
+                    addLog('System', 'Stop request sent to categories crawler');
+
+                } catch (error) {
+                    addLog('System', 'Error stopping categories crawler: ' + error.message);
+                    alert('Error stopping categories crawler: ' + error.message);
+                    // Reset button state on error
+                    toggleBtn.disabled = false;
+                    toggleBtn.textContent = 'Stop Crawling';
                 }
-                
-                addLog('System', 'Categories crawler started successfully');
-            } catch (error) {
-                addLog('System', 'Error starting categories crawler: ' + error.message);
-                alert('Error starting categories crawler: ' + error.message);
+            } else {
+                // Start the crawler
+                try {
+                    const response = await fetch('/api/start-categories-crawler', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error);
+                    }
+
+                    addLog('System', 'Categories crawler started successfully');
+                } catch (error) {
+                    addLog('System', 'Error starting categories crawler: ' + error.message);
+                    alert('Error starting categories crawler: ' + error.message);
+                }
             }
         }
         
@@ -620,30 +706,7 @@
             }
         }
 
-        async function stopCategoriesCrawler() {
-            try {
-                const response = await fetch('/api/stop-categories-crawler', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
 
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error);
-                }
-
-                addLog('System', 'Stop request sent to categories crawler');
-
-                // Disable the stop button to prevent multiple requests
-                const stopBtn = document.getElementById('categories-stop-btn');
-                stopBtn.disabled = true;
-                stopBtn.textContent = 'Stopping...';
-
-            } catch (error) {
-                addLog('System', 'Error stopping categories crawler: ' + error.message);
-                alert('Error stopping categories crawler: ' + error.message);
-            }
-        }
 
         // Download functions
         async function downloadDetailGirlsCsv() {

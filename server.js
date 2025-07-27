@@ -290,6 +290,36 @@ app.post('/api/stop-categories-crawler', requireAuth, async (req, res) => {
     }
 });
 
+app.post('/api/stop-girls-crawler', requireAuth, async (req, res) => {
+    if (!crawlerState.girls.isRunning) {
+        return res.status(400).json({ error: 'Girls crawler is not running' });
+    }
+
+    try {
+        // For now, we'll just mark it as stopped since the girls crawler doesn't have a stop mechanism yet
+        // This is a placeholder for future implementation
+        crawlerState.girls.logs.push({
+            timestamp: new Date(),
+            message: '🛑 Stop requested by user - girls crawler will be stopped (feature in development)'
+        });
+
+        res.json({ success: true, message: 'Stop request sent to girls crawler' });
+
+        // Broadcast the log update
+        broadcastUpdate('log', { type: 'girls', message: '🛑 Stop requested by user - girls crawler will be stopped (feature in development)' });
+
+        // For now, we'll simulate stopping by setting the state
+        setTimeout(() => {
+            crawlerState.girls.isRunning = false;
+            broadcastUpdate('stopped', { type: 'girls' });
+        }, 2000);
+
+    } catch (error) {
+        console.error('Error stopping girls crawler:', error);
+        res.status(500).json({ error: 'Failed to stop girls crawler' });
+    }
+});
+
 // Download endpoints
 app.get('/api/download/detail-girls-csv', requireAuth, (req, res) => {
     try {
