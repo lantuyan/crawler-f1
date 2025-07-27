@@ -194,15 +194,14 @@ class CloudflareHandler {
     }
 
     /**
-     * Calculates retry delay with exponential backoff and jitter
+     * Calculates retry delay with fixed 100ms wait
      * @param {number} attempt - Current attempt number (0-based)
-     * @param {number} baseDelay - Base delay in milliseconds
-     * @returns {number} Delay in milliseconds
+     * @param {number} baseDelay - Base delay in milliseconds (ignored, always returns 100ms)
+     * @returns {number} Delay in milliseconds (always 100ms)
      */
-    calculateRetryDelay(attempt, baseDelay = 2000) {
-        const exponentialDelay = baseDelay * Math.pow(2, attempt);
-        const jitter = Math.random() * 1000; // Add up to 1 second of jitter
-        return Math.min(exponentialDelay + jitter, 30000); // Cap at 30 seconds
+    calculateRetryDelay(attempt, baseDelay = 100) {
+        // Fixed 100ms delay instead of exponential backoff
+        return 100;
     }
 
     /**
@@ -261,11 +260,11 @@ const CLOUDFLARE_CONFIG = {
     // Maximum number of retry attempts for Cloudflare-blocked requests
     maxRetries: 8,
 
-    // Base delay for retry attempts (will be increased exponentially)
-    baseRetryDelay: 3000, // 3 seconds
+    // Base delay for retry attempts (fixed 100ms)
+    baseRetryDelay: 100, // 100ms
 
-    // Maximum delay between retries (cap for exponential backoff)
-    maxRetryDelay: 45000, // 45 seconds
+    // Maximum delay between retries (fixed 100ms)
+    maxRetryDelay: 100, // 100ms
 
     // Enable/disable anti-detection measures
     enableAntiDetection: true,
@@ -283,7 +282,7 @@ const CLOUDFLARE_CONFIG = {
     enableDetailedLogging: true,
 
     // Wait time before considering a page fully loaded (for challenge pages)
-    challengeWaitTime: 10000, // 10 seconds
+    challengeWaitTime: 100, // 100ms
 
     // Enable statistics tracking
     enableStatsTracking: true
@@ -1023,7 +1022,7 @@ async function extractProfileDataWithRetry(page, url, useProxy) {
 
                 if (attempt < CLOUDFLARE_CONFIG.maxRetries - 1) {
                     const delay = cloudflareHandler.calculateRetryDelay(attempt, CLOUDFLARE_CONFIG.baseRetryDelay);
-                    console.log(`⏳ Waiting ${Math.round(delay/1000)}s before retry...`);
+                    console.log(`⏳ Waiting ${delay}ms before retry...`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
@@ -1051,7 +1050,7 @@ async function extractProfileDataWithRetry(page, url, useProxy) {
 
             if (attempt < CLOUDFLARE_CONFIG.maxRetries - 1) {
                 const delay = cloudflareHandler.calculateRetryDelay(attempt, CLOUDFLARE_CONFIG.baseRetryDelay);
-                console.log(`⏳ Waiting ${Math.round(delay/1000)}s before retry...`);
+                console.log(`⏳ Waiting ${delay}ms before retry...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
@@ -1199,8 +1198,8 @@ async function applyAntiDetectionMeasures(page, attempt) {
 
         // Add random delay to mimic human behavior
         if (CLOUDFLARE_CONFIG.enableRandomDelays) {
-            const randomDelay = Math.random() * 2000 + 1000; // 1-3 seconds
-            console.log(`⏳ Adding random delay: ${Math.round(randomDelay/1000)}s`);
+            const randomDelay = 100; // Fixed 100ms delay
+            console.log(`⏳ Adding random delay: ${randomDelay}ms`);
             await new Promise(resolve => setTimeout(resolve, randomDelay));
         }
 
@@ -1227,7 +1226,7 @@ async function extractProfileDataCore(page, url, useProxy) {
         try {
             response = await page.goto(url, {
                 waitUntil: 'domcontentloaded',
-                timeout: 20000
+                timeout: 5000
             });
         } catch (navigationError) {
             console.log(`Navigation error: ${navigationError.message}`);
@@ -1275,10 +1274,10 @@ async function extractProfileDataCore(page, url, useProxy) {
 
         // Quick content check
         try {
-            await page.waitForSelector('.profile-card, body', { timeout: 3000 });
+            await page.waitForSelector('.profile-card, body', { timeout: 1000 });
         } catch (selectorError) {
             // Try body as fallback
-            await page.waitForSelector('body', { timeout: 2000 });
+            await page.waitForSelector('body', { timeout: 500 });
         }
 
         // Reload content after potential challenge resolution
@@ -1663,7 +1662,6 @@ async function crawlProfiles() {
     for (const url of testUrls) {
         try {
             const data = await extractProfileDataWithRetry(page, url, useProxy);
-            processed++;
 
             // Only save valid profile data to CSV
             if (data && isValidProfileData(data)) {
@@ -1672,6 +1670,7 @@ async function crawlProfiles() {
                 // Write data to CSV immediately with duplicate checking
                 const writeSuccess = await saveDataToCSVRealtime(data);
                 if (writeSuccess) {
+                    processed++; // Only increment when successfully saved to CSV
                     successfulWrites++;
                     console.log(`✅ Valid profile data saved: ${data.nickname}`);
                 } else {
@@ -1693,7 +1692,7 @@ async function crawlProfiles() {
         } catch (error) {
             console.error(`❌ Failed to process ${url}:`, error.message);
             console.log(`❌ Failed to process ${url} after all retries - not saved to CSV`);
-            processed++;
+            // Don't increment processed for failed extractions
         }
     }
 
@@ -1726,7 +1725,7 @@ async function crawlProfilesMultiThreaded() {
     const testUrls = urls;
     console.log(`Processing all ${testUrls.length} URLs with AJAX phone extraction`);
 
-    const numThreads = Math.min(MAX_CONCURRENT_THREADS, Math.ceil(testUrls.length / 100)); // Adjust threads based on URL count
+    const numThreads = MAX_CONCURRENT_THREADS; // Adjust threads based on URL count
     const urlsPerThread = Math.ceil(testUrls.length / numThreads);
 
     console.log(`Using ${numThreads} threads, ~${urlsPerThread} URLs per thread`);
@@ -1823,13 +1822,13 @@ async function crawlBatch(urls, threadId) {
         for (const url of urls) {
             try {
                 const data = await extractProfileDataWithRetry(page, url, useProxy);
-                processed++;
 
                 // Only save valid profile data to CSV
                 if (data && isValidProfileData(data)) {
                     // Write data to CSV immediately with duplicate checking
                     const writeSuccess = await saveDataToCSVRealtime(data);
                     if (writeSuccess) {
+                        processed++; // Only increment when successfully saved to CSV
                         successful++;
                         console.log(`✅ Thread ${threadId}: Valid profile data saved: ${data.nickname}`);
                     } else {
@@ -1853,7 +1852,7 @@ async function crawlBatch(urls, threadId) {
             } catch (error) {
                 console.error(`❌ Thread ${threadId}: Failed to process ${url}:`, error.message);
                 console.log(`❌ Thread ${threadId}: Failed to process ${url} after all retries - not saved to CSV`);
-                processed++;
+                // Don't increment processed for failed extractions
             }
         }
 

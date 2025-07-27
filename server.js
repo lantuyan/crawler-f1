@@ -249,6 +249,7 @@ app.post('/api/start-girls-crawler', requireAuth, async (req, res) => {
         crawlerState.girls.isRunning = true;
         crawlerState.girls.startTime = new Date();
         crawlerState.girls.progress = 0;
+        crawlerState.girls.processedProfiles = 0; // Reset processed count to 0 when starting
         crawlerState.girls.logs = [];
 
         res.json({ success: true, message: 'Girls crawler started' });
@@ -498,6 +499,7 @@ async function startGirlsCrawler() {
         const csvContent = fs.readFileSync(listGirlPath, 'utf8');
         const lines = csvContent.trim().split('\n');
         crawlerState.girls.totalProfiles = Math.max(0, lines.length - 1); // Exclude header
+        crawlerState.girls.processedProfiles = 0; // Reset processed count to 0 when starting
 
         // Override console.log to capture logs
         const originalLog = console.log;
@@ -508,8 +510,8 @@ async function startGirlsCrawler() {
                 message: message
             });
 
-            // Extract progress information from logs
-            if (message.includes('Extracted data for:') || message.includes('Profile data appended')) {
+            // Extract progress information from logs - only count successfully saved profiles
+            if (message.includes('Valid profile data saved:')) {
                 crawlerState.girls.processedProfiles++;
                 if (crawlerState.girls.totalProfiles > 0) {
                     crawlerState.girls.progress = Math.round((crawlerState.girls.processedProfiles / crawlerState.girls.totalProfiles) * 100);
