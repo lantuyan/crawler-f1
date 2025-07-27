@@ -28,6 +28,24 @@ const csvWriter = createCsvWriter({
     ]
 });
 
+// Function to clear the CSV file before starting
+function clearListGirlCsv() {
+    try {
+        const fs = require('fs');
+        if (fs.existsSync(OUTPUT_FILE)) {
+            fs.unlinkSync(OUTPUT_FILE);
+            console.log(`🗑️  Cleared existing ${OUTPUT_FILE}`);
+        }
+        // Create new file with header
+        const headerLine = 'Name,Location,Profile URL\n';
+        fs.writeFileSync(OUTPUT_FILE, headerLine);
+        console.log(`📝 Created new ${OUTPUT_FILE} with header`);
+    } catch (error) {
+        console.error(`❌ Error clearing ${OUTPUT_FILE}:`, error);
+        throw error;
+    }
+}
+
 class FgirlCategoryCrawler {
     constructor() {
         this.browser = null;
@@ -270,7 +288,7 @@ class FgirlCategoryCrawler {
                         }
                     }
 
-                    return maxPage;
+                    return maxPage
                 });
 
                 if (totalPages > 0) {
@@ -893,7 +911,7 @@ class FgirlCategoryCrawler {
 
         await this.cleanup(); // Clean up the initial browser instance
 
-        const totalPages = totalPagesGirl;
+        const totalPages = totalPagesGirl + 1;
         const numThreads = numThreadsForGirl;
         const pagesPerThread = Math.ceil(totalPages / numThreads);
 
@@ -1038,7 +1056,10 @@ async function main() {
     console.log('=== Dynamic Target: Will fetch actual number from website ===');
     console.log('=== 10 threads with intelligent stopping when target reached ===');
     console.log('=== Continuous Loop Mode - Will restart after completion ===');
-    
+
+    // Clear the CSV file before starting
+    clearListGirlCsv();
+
     const crawler = new FgirlCategoryCrawler();
     
     // Handle graceful shutdown
@@ -1130,6 +1151,9 @@ async function runCategoriesCrawlerForWeb() {
     console.log('=== Dynamic Target: Will fetch actual number from website ===');
     console.log('=== 10 threads with intelligent stopping when target reached ===');
     console.log('=== Continuous Loop Mode - Will restart after completion ===');
+
+    // Clear the CSV file before starting
+    clearListGirlCsv();
 
     const crawler = new FgirlCategoryCrawler();
 
@@ -1255,5 +1279,6 @@ if (require.main === module) {
 
 module.exports = {
     FgirlCategoryCrawler,
-    runCategoriesCrawlerForWeb
+    runCategoriesCrawlerForWeb,
+    clearListGirlCsv
 };

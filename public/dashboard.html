@@ -265,6 +265,9 @@
                     <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">
                         Crawls category pages to generate list-girl.csv with profile URLs
                     </p>
+                    <p style="margin-bottom: 1rem; color: #e74c3c; font-size: 0.85rem; font-weight: 500;">
+                        ⚠️ Will clear existing list-girl.csv before starting
+                    </p>
                     <button class="crawler-btn categories" id="categories-btn" onclick="startCategoriesCrawler()">
                         Run Crawl Categories
                     </button>
@@ -291,6 +294,9 @@
                     <h3>👥 Girls Crawler</h3>
                     <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">
                         Processes URLs from list-girl.csv to extract detailed profile data
+                    </p>
+                    <p style="margin-bottom: 1rem; color: #e74c3c; font-size: 0.85rem; font-weight: 500;">
+                        ⚠️ Will clear existing detail-girls.csv before starting
                     </p>
                     <button class="crawler-btn girls" id="girls-btn" onclick="startGirlsCrawler()">
                         Run Crawl Girls

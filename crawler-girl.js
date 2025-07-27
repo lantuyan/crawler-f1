@@ -313,6 +313,23 @@ const csvWriter = createCsvWriter({
     ]
 });
 
+// Function to clear the CSV file before starting
+function clearDetailGirlsCsv() {
+    try {
+        if (fs.existsSync(OUTPUT_FILE)) {
+            fs.unlinkSync(OUTPUT_FILE);
+            console.log(`🗑️  Cleared existing ${OUTPUT_FILE}`);
+        }
+        // Create new file with header
+        const headerLine = 'URL,Canton,City,Nickname,Category,Phone number,Status (active or inactive),Certified or not,About,Number of visits,Services provided,Location,Description,Link (if any in the ad),Number of likes,Number of followers,Number of reviews\n';
+        fs.writeFileSync(OUTPUT_FILE, headerLine);
+        console.log(`📝 Created new ${OUTPUT_FILE} with header`);
+    } catch (error) {
+        console.error(`❌ Error clearing ${OUTPUT_FILE}:`, error);
+        throw error;
+    }
+}
+
 // Global variables for real-time CSV writing
 let csvWriteLock = false; // Thread-safe CSV writing lock
 
@@ -1860,6 +1877,9 @@ if (require.main === module) {
     console.log('=== Features: Cloudflare-aware retry logic, Advanced anti-detection, Comprehensive monitoring ===');
     console.log('=== Proxy support, Modal handling, Real-time CSV, Multi-threading ===');
 
+    // Clear the CSV file before starting
+    clearDetailGirlsCsv();
+
     // Display Cloudflare configuration
     console.log('\n🛡️ Cloudflare Protection Configuration:');
     console.log(`   Max Retries: ${CLOUDFLARE_CONFIG.maxRetries}`);
@@ -1913,6 +1933,9 @@ async function runGirlsCrawlerForWeb() {
     console.log('=== Fgirl Girls Crawler Started (Web Interface) ===');
     console.log('=== Multi-threaded Profile Crawling ===');
     console.log('=== Processing URLs from list-girl.csv ===');
+
+    // Clear the CSV file before starting
+    clearDetailGirlsCsv();
 
     try {
         const path = require('path');
@@ -1971,6 +1994,7 @@ module.exports = {
     logCrawlingStats,
     isValidProfileData, // Data validation function
     determineBlockType, // Block type detection function
+    clearDetailGirlsCsv, // CSV clearing function
 
     // Cloudflare handling
     cloudflareHandler,
