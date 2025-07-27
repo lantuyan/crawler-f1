@@ -9,7 +9,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 
 // Import crawler modules
-const { runCategoriesCrawlerForWeb, requestStop } = require('./crawler-categories');
+const { runCategoriesCrawlerForWeb, requestStop, resetStopFlag } = require('./crawler-categories');
 const { runGirlsCrawlerForWeb } = require('./crawler-girl');
 
 const app = express();
@@ -242,6 +242,9 @@ app.post('/api/start-girls-crawler', requireAuth, async (req, res) => {
         if (!fs.existsSync(listGirlPath)) {
             return res.status(400).json({ error: 'list-girl.csv not found. Run categories crawler first.' });
         }
+
+        // Reset the stop flag from categories crawler to ensure girls crawler can run properly
+        resetStopFlag();
 
         crawlerState.girls.isRunning = true;
         crawlerState.girls.startTime = new Date();

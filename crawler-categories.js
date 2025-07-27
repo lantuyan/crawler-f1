@@ -1351,5 +1351,6 @@ module.exports = {
     FgirlCategoryCrawler,
     runCategoriesCrawlerForWeb,
     clearListGirlCsv,
-    requestStop
+    requestStop,
+    resetStopFlag
 };
