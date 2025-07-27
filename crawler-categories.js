@@ -15,7 +15,8 @@ const numThreadsForGirl = 10; // Number of concurrent threads
 // Global shared state for all crawler threads
 const globalCrawlState = {
     totalGirlsCrawled: 0,
-    crawlLock: false
+    crawlLock: false,
+    stopRequested: false // Flag to stop crawling gracefully
 };
 
 // CSV Writer setup
@@ -44,6 +45,18 @@ function clearListGirlCsv() {
         console.error(`❌ Error clearing ${OUTPUT_FILE}:`, error);
         throw error;
     }
+}
+
+// Function to request stop of the crawler
+function requestStop() {
+    globalCrawlState.stopRequested = true;
+    console.log('🛑 Stop requested for Categories Crawler');
+}
+
+// Function to reset stop flag when starting a new crawl
+function resetStopFlag() {
+    globalCrawlState.stopRequested = false;
+    console.log('🔄 Reset stop flag for Categories Crawler');
 }
 
 class FgirlCategoryCrawler {
@@ -677,6 +690,12 @@ class FgirlCategoryCrawler {
 
             const batchResults = [];
             for (let page = startPage; page <= endPage; page++) {
+                // Check if stop is requested
+                if (globalCrawlState.stopRequested) {
+                    console.log(`Thread ${threadId}: Stop requested, stopping batch early at page ${page}`);
+                    break;
+                }
+
                 // Check if target is reached before processing each page
                 const currentCSVCount = this.getCurrentCSVCount();
                 if (totalGirlsExpected > 0 && currentCSVCount >= totalGirlsExpected) {
@@ -693,6 +712,12 @@ class FgirlCategoryCrawler {
                 const updatedCSVCount = this.getCurrentCSVCount();
                 if (totalGirlsExpected > 0 && updatedCSVCount >= totalGirlsExpected) {
                     console.log(`Thread ${threadId}: Target reached after page ${page} (${updatedCSVCount}/${totalGirlsExpected} in CSV), stopping batch`);
+                    break;
+                }
+
+                // Check if stop is requested after processing the page
+                if (globalCrawlState.stopRequested) {
+                    console.log(`Thread ${threadId}: Stop requested after page ${page}, stopping batch`);
                     break;
                 }
 
@@ -1097,10 +1122,10 @@ async function main() {
 
             // Run multi-threaded crawl with real-time CSV writing
             const allProfileLinks = await crawler.multiThreadedCrawlRealtime();
-            
+
             const endTime = new Date();
             const duration = (endTime - startTime) / 1000;
-            
+
             console.log(`\n=== Crawl Cycle #${crawlCount} Summary ===`);
             console.log(`Start time: ${startTime.toISOString()}`);
             console.log(`End time: ${endTime.toISOString()}`);
@@ -1111,6 +1136,20 @@ async function main() {
             console.log(`Pages checked: ${totalPagesGirl}`);
             console.log(`Output file: ${OUTPUT_FILE}`);
             console.log('=== Real-time CSV Writing Completed Successfully ===');
+
+            // Update totalGirlsExpected after each crawling cycle completes
+            // This ensures we have the most current total from the website
+            console.log('🔄 Updating total girls count after crawl cycle...');
+            await crawler.init(); // Initialize browser for checking
+            const updatedTotalGirls = await crawler.checkTotalGirls();
+            await crawler.cleanup(); // Clean up browser after checking
+
+            if (updatedTotalGirls !== totalGirlsExpected) {
+                console.log(`📊 Total girls count updated: ${totalGirlsExpected.toLocaleString()} → ${updatedTotalGirls.toLocaleString()}`);
+                totalGirlsExpected = updatedTotalGirls;
+            } else {
+                console.log(`📊 Total girls count unchanged: ${totalGirlsExpected.toLocaleString()}`);
+            }
 
             // Check if target has been reached by checking CSV file count
             const finalCSVCount = crawler.getCurrentCSVCount();
@@ -1151,6 +1190,9 @@ async function runCategoriesCrawlerForWeb() {
     console.log('=== Dynamic Target: Will fetch actual number from website ===');
     console.log('=== 10 threads with intelligent stopping when target reached ===');
     console.log('=== Continuous Loop Mode - Will restart after completion ===');
+
+    // Reset stop flag when starting a new crawl
+    resetStopFlag();
 
     // Clear the CSV file before starting
     clearListGirlCsv();
@@ -1197,6 +1239,20 @@ async function runCategoriesCrawlerForWeb() {
 
         while (true) {
             try {
+                // Check if stop is requested before starting a new cycle
+                if (globalCrawlState.stopRequested) {
+                    console.log(`\n🛑 Stop requested, ending crawl gracefully after ${crawlCount} cycles`);
+                    const finalCSVCount = crawler.getCurrentCSVCount();
+                    return {
+                        success: true,
+                        totalCrawled: finalCSVCount,
+                        targetReached: false,
+                        stopped: true,
+                        duration: totalDuration.toFixed(2),
+                        cycles: crawlCount
+                    };
+                }
+
                 crawlCount++;
                 const startTime = Date.now();
                 console.log(`\n=== Starting Crawl Cycle #${crawlCount} (Web Interface) ===`);
@@ -1230,6 +1286,20 @@ async function runCategoriesCrawlerForWeb() {
                 console.log(`Pages checked: ${totalPagesGirl}`);
                 console.log(`Output file: ${OUTPUT_FILE}`);
                 console.log('=== Real-time CSV Writing Completed Successfully ===');
+
+                // Update totalGirlsExpected after each crawling cycle completes
+                // This ensures we have the most current total from the website
+                console.log('🔄 Updating total girls count after crawl cycle...');
+                await crawler.init(); // Initialize browser for checking
+                const updatedTotalGirls = await crawler.checkTotalGirls();
+                await crawler.cleanup(); // Clean up browser after checking
+
+                if (updatedTotalGirls !== totalGirlsExpected) {
+                    console.log(`📊 Total girls count updated: ${totalGirlsExpected.toLocaleString()} → ${updatedTotalGirls.toLocaleString()}`);
+                    totalGirlsExpected = updatedTotalGirls;
+                } else {
+                    console.log(`📊 Total girls count unchanged: ${totalGirlsExpected.toLocaleString()}`);
+                }
 
                 // Check if target has been reached by checking CSV file count
                 const finalCSVCount = crawler.getCurrentCSVCount();
@@ -1280,5 +1350,6 @@ if (require.main === module) {
 module.exports = {
     FgirlCategoryCrawler,
     runCategoriesCrawlerForWeb,
-    clearListGirlCsv
+    clearListGirlCsv,
+    requestStop
 };

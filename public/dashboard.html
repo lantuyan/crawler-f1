@@ -271,6 +271,9 @@
                     <button class="crawler-btn categories" id="categories-btn" onclick="startCategoriesCrawler()">
                         Run Crawl Categories
                     </button>
+                    <button class="crawler-btn categories stop-btn" id="categories-stop-btn" onclick="stopCategoriesCrawler()" style="display: none; background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);">
+                        Stop Crawling
+                    </button>
                     <div class="progress-container" id="categories-progress" style="display: none;">
                         <div class="progress-bar">
                             <div class="progress-fill" id="categories-progress-fill"></div>
@@ -284,6 +287,10 @@
                             <div class="stat-item">
                                 <div class="stat-value" id="categories-girls">0</div>
                                 <div class="stat-label">Girls Found</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="categories-expected">0</div>
+                                <div class="stat-label">Expected Total</div>
                             </div>
                         </div>
                     </div>
@@ -361,6 +368,17 @@
         socket.on('crawler-log', (data) => {
             addLog(data.type, data.message);
         });
+
+        // Handle crawler stopped event
+        socket.on('stopped', (data) => {
+            if (data.type === 'categories') {
+                // Reset stop button state
+                const stopBtn = document.getElementById('categories-stop-btn');
+                stopBtn.disabled = false;
+                stopBtn.textContent = 'Stop Crawling';
+                addLog('System', 'Categories crawler stopped successfully');
+            }
+        });
         
 
         
@@ -369,24 +387,32 @@
             // Categories crawler
             const categoriesControl = document.getElementById('categories-control');
             const categoriesBtn = document.getElementById('categories-btn');
+            const categoriesStopBtn = document.getElementById('categories-stop-btn');
             const categoriesProgress = document.getElementById('categories-progress');
-            
+
             if (state.categories.isRunning) {
                 categoriesControl.classList.add('running');
                 categoriesBtn.disabled = true;
                 categoriesBtn.textContent = 'Running...';
+                categoriesStopBtn.style.display = 'block';
                 categoriesProgress.style.display = 'block';
-                
+
                 document.getElementById('categories-progress-fill').style.width = state.categories.progress + '%';
                 document.getElementById('categories-progress-text').textContent = state.categories.progress + '%';
                 document.getElementById('categories-pages').textContent = state.categories.currentPage + '/' + state.categories.totalPages;
                 document.getElementById('categories-girls').textContent = state.categories.crawledGirls.toLocaleString();
+                document.getElementById('categories-expected').textContent = state.categories.totalGirlsExpected.toLocaleString();
             } else {
                 categoriesControl.classList.remove('running');
                 categoriesBtn.disabled = false;
                 categoriesBtn.textContent = 'Run Crawl Categories';
+                categoriesStopBtn.style.display = 'none';
                 if (state.categories.progress === 100) {
                     categoriesProgress.style.display = 'block';
+                    // Update stats even when not running
+                    document.getElementById('categories-pages').textContent = state.categories.currentPage + '/' + state.categories.totalPages;
+                    document.getElementById('categories-girls').textContent = state.categories.crawledGirls.toLocaleString();
+                    document.getElementById('categories-expected').textContent = state.categories.totalGirlsExpected.toLocaleString();
                 } else {
                     categoriesProgress.style.display = 'none';
                 }
@@ -462,16 +488,41 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
-                
+
                 const data = await response.json();
                 if (!response.ok) {
                     throw new Error(data.error);
                 }
-                
+
                 addLog('System', 'Girls crawler started successfully');
             } catch (error) {
                 addLog('System', 'Error starting girls crawler: ' + error.message);
                 alert('Error starting girls crawler: ' + error.message);
+            }
+        }
+
+        async function stopCategoriesCrawler() {
+            try {
+                const response = await fetch('/api/stop-categories-crawler', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error);
+                }
+
+                addLog('System', 'Stop request sent to categories crawler');
+
+                // Disable the stop button to prevent multiple requests
+                const stopBtn = document.getElementById('categories-stop-btn');
+                stopBtn.disabled = true;
+                stopBtn.textContent = 'Stopping...';
+
+            } catch (error) {
+                addLog('System', 'Error stopping categories crawler: ' + error.message);
+                alert('Error stopping categories crawler: ' + error.message);
             }
         }
         

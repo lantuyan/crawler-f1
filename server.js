@@ -9,7 +9,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 
 // Import crawler modules
-const { runCategoriesCrawlerForWeb } = require('./crawler-categories');
+const { runCategoriesCrawlerForWeb, requestStop } = require('./crawler-categories');
 const { runGirlsCrawlerForWeb } = require('./crawler-girl');
 
 const app = express();
@@ -61,6 +61,7 @@ let crawlerState = {
         totalPages: 0,
         currentPage: 0,
         totalGirls: 0,
+        totalGirlsExpected: 0,
         crawledGirls: 0,
         startTime: null,
         logs: []
@@ -98,8 +99,36 @@ function initializeCrawlerState() {
             crawlerState.girls.processedProfiles = currentCount;
             console.log(`📊 Initialized Girls Processed count to: ${currentCount} (from existing detail CSV)`);
         }
+
+        // Initialize totalGirlsExpected asynchronously
+        initializeTotalGirlsExpected();
     } catch (error) {
         console.error('Error initializing crawler state:', error);
+    }
+}
+
+// Initialize totalGirlsExpected from website
+async function initializeTotalGirlsExpected() {
+    try {
+        console.log('🔍 Checking website for total girls count...');
+
+        // Create a temporary crawler instance to check total girls
+        const { FgirlCategoryCrawler } = require('./crawler-categories');
+        const tempCrawler = new FgirlCategoryCrawler();
+
+        await tempCrawler.init();
+        const totalGirls = await tempCrawler.checkTotalGirls();
+        await tempCrawler.cleanup();
+
+        if (totalGirls > 0) {
+            crawlerState.categories.totalGirlsExpected = totalGirls;
+            console.log(`📊 Initialized Expected Total to: ${totalGirls.toLocaleString()} girls`);
+            updateCategoriesProgress();
+        }
+    } catch (error) {
+        console.log('⚠️ Could not initialize totalGirlsExpected from website:', error.message);
+        // Set a default value or leave as 0
+        crawlerState.categories.totalGirlsExpected = 0;
     }
 }
 
@@ -187,6 +216,7 @@ app.post('/api/start-categories-crawler', requireAuth, async (req, res) => {
         crawlerState.categories.isRunning = true;
         crawlerState.categories.startTime = new Date();
         crawlerState.categories.progress = 0;
+        crawlerState.categories.totalGirlsExpected = 0; // Reset expected count
         crawlerState.categories.logs = [];
         
         res.json({ success: true, message: 'Categories crawler started' });
@@ -205,28 +235,54 @@ app.post('/api/start-girls-crawler', requireAuth, async (req, res) => {
     if (crawlerState.girls.isRunning) {
         return res.status(400).json({ error: 'Girls crawler is already running' });
     }
-    
+
     try {
         // Check if list-girl.csv exists
         const listGirlPath = path.join(__dirname, 'list-girl.csv');
         if (!fs.existsSync(listGirlPath)) {
             return res.status(400).json({ error: 'list-girl.csv not found. Run categories crawler first.' });
         }
-        
+
         crawlerState.girls.isRunning = true;
         crawlerState.girls.startTime = new Date();
         crawlerState.girls.progress = 0;
         crawlerState.girls.logs = [];
-        
+
         res.json({ success: true, message: 'Girls crawler started' });
-        
+
         // Start crawler in background
         startGirlsCrawler();
-        
+
     } catch (error) {
         console.error('Error starting girls crawler:', error);
         crawlerState.girls.isRunning = false;
         res.status(500).json({ error: 'Failed to start girls crawler' });
+    }
+});
+
+app.post('/api/stop-categories-crawler', requireAuth, async (req, res) => {
+    if (!crawlerState.categories.isRunning) {
+        return res.status(400).json({ error: 'Categories crawler is not running' });
+    }
+
+    try {
+        // Request stop of the crawler
+        requestStop();
+
+        // Update crawler state to indicate stopping
+        crawlerState.categories.logs.push({
+            timestamp: new Date(),
+            message: '🛑 Stop requested by user - crawler will stop gracefully after current operations complete'
+        });
+
+        res.json({ success: true, message: 'Stop request sent to categories crawler' });
+
+        // Broadcast the log update
+        broadcastUpdate('log', { type: 'categories', message: '🛑 Stop requested by user - crawler will stop gracefully after current operations complete' });
+
+    } catch (error) {
+        console.error('Error stopping categories crawler:', error);
+        res.status(500).json({ error: 'Failed to stop categories crawler' });
     }
 });
 
@@ -252,8 +308,13 @@ function broadcastUpdate(type, data) {
 
 // Helper function to update categories progress based on girls processed
 function updateCategoriesProgress() {
-    if (crawlerState.categories.totalGirls > 0 && crawlerState.categories.crawledGirls >= 0) {
-        crawlerState.categories.progress = Math.round((crawlerState.categories.crawledGirls / crawlerState.categories.totalGirls) * 100);
+    // Use totalGirlsExpected if available, otherwise fall back to totalGirls
+    const targetTotal = crawlerState.categories.totalGirlsExpected > 0
+        ? crawlerState.categories.totalGirlsExpected
+        : crawlerState.categories.totalGirls;
+
+    if (targetTotal > 0 && crawlerState.categories.crawledGirls >= 0) {
+        crawlerState.categories.progress = Math.round((crawlerState.categories.crawledGirls / targetTotal) * 100);
         crawlerState.categories.progress = Math.min(crawlerState.categories.progress, 100); // Cap at 100%
     }
 }
@@ -291,6 +352,7 @@ async function startCategoriesCrawler() {
                 const match = message.match(/(\d+(?:,\d+)*)\s+girls/);
                 if (match) {
                     crawlerState.categories.totalGirls = parseInt(match[1].replace(/,/g, ''));
+                    crawlerState.categories.totalGirlsExpected = parseInt(match[1].replace(/,/g, ''));
                     updateCategoriesProgress();
                 }
             }
@@ -350,6 +412,34 @@ async function startCategoriesCrawler() {
                 const match = message.match(/Fixed Target: ([\d,]+) girls/);
                 if (match) {
                     crawlerState.categories.totalGirls = parseInt(match[1].replace(/,/g, ''));
+                    crawlerState.categories.totalGirlsExpected = parseInt(match[1].replace(/,/g, ''));
+                    updateCategoriesProgress();
+                }
+            }
+
+            // Extract totalGirlsExpected from updated total messages
+            if (message.includes('Total girls count updated:') && message.includes('→')) {
+                const match = message.match(/→ ([\d,]+)/);
+                if (match) {
+                    crawlerState.categories.totalGirlsExpected = parseInt(match[1].replace(/,/g, ''));
+                    updateCategoriesProgress();
+                }
+            }
+
+            // Extract totalGirlsExpected from unchanged total messages
+            if (message.includes('Total girls count unchanged:')) {
+                const match = message.match(/unchanged: ([\d,]+)/);
+                if (match) {
+                    crawlerState.categories.totalGirlsExpected = parseInt(match[1].replace(/,/g, ''));
+                    updateCategoriesProgress();
+                }
+            }
+
+            // Extract totalGirlsExpected from initial website check
+            if (message.includes('Total girls found on website:')) {
+                const match = message.match(/website: ([\d,]+)/);
+                if (match) {
+                    crawlerState.categories.totalGirlsExpected = parseInt(match[1].replace(/,/g, ''));
                     updateCategoriesProgress();
                 }
             }
@@ -375,7 +465,17 @@ async function startCategoriesCrawler() {
         crawlerState.categories.isRunning = false;
         crawlerState.categories.crawledGirls = result.totalCrawled;
         updateCategoriesProgress();
-        broadcastUpdate('complete', { type: 'categories' });
+
+        // Check if crawler was stopped by user or completed naturally
+        if (result.stopped) {
+            crawlerState.categories.logs.push({
+                timestamp: new Date(),
+                message: `🛑 Crawler stopped by user. Crawled ${result.totalCrawled} girls in ${result.cycles} cycles (${result.duration}s)`
+            });
+            broadcastUpdate('stopped', { type: 'categories' });
+        } else {
+            broadcastUpdate('complete', { type: 'categories' });
+        }
 
     } catch (error) {
         console.error('Categories crawler error:', error);
