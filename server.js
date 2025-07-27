@@ -290,6 +290,69 @@ app.post('/api/stop-categories-crawler', requireAuth, async (req, res) => {
     }
 });
 
+// Download endpoints
+app.get('/api/download/detail-girls-csv', requireAuth, (req, res) => {
+    try {
+        const filePath = path.join(__dirname, 'detail-girls.csv');
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'detail-girls.csv not found. Run the girls crawler first.' });
+        }
+
+        // Check if file has content (more than just header)
+        const stats = fs.statSync(filePath);
+        if (stats.size < 100) { // Assuming header is less than 100 bytes
+            return res.status(400).json({ error: 'detail-girls.csv appears to be empty. Run the girls crawler first.' });
+        }
+
+        // Set headers for file download
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="detail-girls-${new Date().toISOString().split('T')[0]}.csv"`);
+
+        // Stream the file
+        const fileStream = fs.createReadStream(filePath);
+        fileStream.pipe(res);
+
+        console.log('📥 detail-girls.csv downloaded by user');
+
+    } catch (error) {
+        console.error('Error downloading detail-girls.csv:', error);
+        res.status(500).json({ error: 'Failed to download file' });
+    }
+});
+
+app.get('/api/download/list-girl-csv', requireAuth, (req, res) => {
+    try {
+        const filePath = path.join(__dirname, 'list-girl.csv');
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'list-girl.csv not found. Run the categories crawler first.' });
+        }
+
+        // Check if file has content (more than just header)
+        const stats = fs.statSync(filePath);
+        if (stats.size < 50) { // Assuming header is less than 50 bytes
+            return res.status(400).json({ error: 'list-girl.csv appears to be empty. Run the categories crawler first.' });
+        }
+
+        // Set headers for file download
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="list-girl-${new Date().toISOString().split('T')[0]}.csv"`);
+
+        // Stream the file
+        const fileStream = fs.createReadStream(filePath);
+        fileStream.pipe(res);
+
+        console.log('📥 list-girl.csv downloaded by user');
+
+    } catch (error) {
+        console.error('Error downloading list-girl.csv:', error);
+        res.status(500).json({ error: 'Failed to download file' });
+    }
+});
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
