@@ -457,7 +457,16 @@ function broadcastUpdate(type, data) {
     io.emit('crawler-state-update', crawlerState);
     if (type === 'log') {
         io.emit('crawler-log', data);
+    } else if (type === 'phase-change') {
+        io.emit('phase-change', data);
+    } else if (type === 'complete') {
+        io.emit('complete', data);
+    } else if (type === 'error') {
+        io.emit('error', data);
+    } else if (type === 'stopped') {
+        io.emit('stopped', data);
     }
+    // For 'progress' type, we just need the state update which is already emitted above
 }
 
 // Helper function to update categories progress based on girls processed
@@ -902,6 +911,7 @@ async function startSequentialCrawler() {
         crawlerState.girls.currentPhase = 'girls';
         crawlerState.girls.progress = 50; // Start at 50% since categories is done
         broadcastUpdate('phase-change', { type: 'girls', phase: 'girls' });
+        broadcastUpdate('progress', { type: 'girls' }); // Ensure progress update is sent
 
         console.log('👥 Phase 2: Starting Girls Crawler...');
         await runGirlsCrawlerSequential();
@@ -963,6 +973,9 @@ async function runCategoriesCrawlerSequential() {
                 if (crawlerState.categories.totalGirlsExpected > 0) {
                     const categoriesProgress = Math.min(50, (crawledGirls / crawlerState.categories.totalGirlsExpected) * 50);
                     crawlerState.girls.progress = categoriesProgress;
+
+                    // Broadcast the progress update to all connected clients
+                    broadcastUpdate('progress', { type: 'girls' });
                 }
             }
         }
@@ -1043,6 +1056,9 @@ async function runGirlsCrawlerSequential() {
                 crawlerState.girls.progress = Math.round(mappedProgress);
 
                 console.log(`📊 Sequential update: Processed Profiles = ${newProcessed}/${crawlerState.girls.totalProfiles} (${rawProgress}% → ${crawlerState.girls.progress}%)`);
+
+                // Broadcast the state update to all connected clients
+                broadcastUpdate('progress', { type: 'girls' });
             }
         };
 
