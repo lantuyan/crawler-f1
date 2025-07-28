@@ -788,6 +788,26 @@
                 }
 
                 addLog('System', 'Categories crawler stopped successfully');
+            } else if (data.type === 'girls') {
+                addLog('System', 'Girls crawler stopped');
+            }
+        });
+
+        // Handle crawler completion event
+        socket.on('complete', (data) => {
+            if (data.type === 'girls') {
+                addLog('System', 'Sequential crawler completed successfully!');
+            } else if (data.type === 'categories') {
+                addLog('System', 'Categories crawler completed successfully!');
+            }
+        });
+
+        // Handle crawler error event
+        socket.on('error', (data) => {
+            if (data.type === 'girls') {
+                addLog('Error', `Girls crawler error: ${data.error || 'Unknown error'}`);
+            } else if (data.type === 'categories') {
+                addLog('Error', `Categories crawler error: ${data.error || 'Unknown error'}`);
             }
         });
         
