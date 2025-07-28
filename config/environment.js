@@ -186,7 +186,7 @@ const config = {
         requestLogging: process.env.REQUEST_LOGGING !== 'false',
         performanceMonitoring: process.env.PERFORMANCE_MONITORING === 'true',
         memoryMonitoring: process.env.MEMORY_MONITORING === 'true',
-        maxMemoryPerBrowser: parseInt(process.env.MAX_MEMORY_PER_BROWSER) || 512
+        maxMemoryPerBrowser: parseInt(process.env.MAX_MEMORY_PER_BROWSER) || 2048
     },
     
     // System settings
