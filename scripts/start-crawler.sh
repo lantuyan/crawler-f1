@@ -91,7 +91,7 @@ fi
 
 # Check memory
 AVAILABLE_MEMORY=$(free -m | awk 'NR==2{printf "%.0f", $7}')
-if [ "$AVAILABLE_MEMORY" -lt 512 ]; then  # Less than 512MB
+if [ "$AVAILABLE_MEMORY" -lt 2048 ]; then  # Less than 2GB
     warn "Low memory available: ${AVAILABLE_MEMORY}MB"
 fi
 
@@ -114,7 +114,7 @@ start_with_pm2() {
     pm2 delete fgirl-crawler 2>/dev/null || true
     
     # Start with PM2
-    pm2 start server.js --name "fgirl-crawler" --max-memory-restart 1G
+    pm2 start server.js --name "fgirl-crawler" --max-memory-restart 14G
     pm2 save
     
     log "Application started with PM2"
