@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crawler Dashboard - Fgirl Crawler</title>
+    <title>Fgirl Crawler Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -13,8 +13,17 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f5f6fa;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             color: #333;
+            animation: gradientShift 15s ease infinite;
+            background-size: 400% 400%;
+            min-height: 100vh;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
 
         .header {
@@ -24,7 +33,26 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            transition: left 0.8s ease;
+        }
+        
+        .header:hover::before {
+            left: 100%;
         }
 
         .header h1 {
@@ -38,13 +66,18 @@
             color: white;
             border: none;
             padding: 0.5rem 1rem;
-            border-radius: 5px;
+            border-radius: 10px;
             cursor: pointer;
-            transition: background 0.3s ease;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-weight: 500;
         }
 
         .logout-btn:hover {
             background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
 
         .container {
@@ -54,11 +87,48 @@
         }
 
         .controls-section {
-            background: white;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
             margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: slideInUp 0.6s ease-out;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .controls-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.8s ease;
+        }
+
+        .controls-section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+        }
+
+        .controls-section:hover::before {
+            left: 100%;
+        }
+
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .controls-grid {
@@ -68,13 +138,32 @@
         }
 
         .crawler-control {
-            border: 2px solid #e1e5e9;
-            border-radius: 10px;
-            padding: 1.5rem;
-            transition: border-color 0.3s ease;
-            min-height: 200px;
+            border: 2px solid rgba(225, 229, 233, 0.5);
+            border-radius: 15px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+            min-height: 220px;
             display: flex;
             flex-direction: column;
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .crawler-control::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.6s ease;
+        }
+
+        .crawler-control:hover::before {
+            left: 100%;
         }
 
         .crawler-control.running {
@@ -173,20 +262,56 @@
 
         .stat-item {
             text-align: center;
-            padding: 0.5rem;
-            background: #f8f9fa;
-            border-radius: 5px;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(15px);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .stat-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.1), transparent);
+            transition: left 0.6s ease;
+        }
+
+        .stat-item:hover::before {
+            left: 100%;
+        }
+
+        .stat-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.15);
+            background: rgba(255, 255, 255, 0.95);
+            border-color: rgba(102, 126, 234, 0.2);
         }
 
         .stat-value {
             font-size: 1.2rem;
             font-weight: bold;
             color: #667eea;
+            position: relative;
+            z-index: 1;
+            margin-bottom: 0.25rem;
         }
 
         .stat-label {
             font-size: 0.8rem;
             color: #666;
+            position: relative;
+            z-index: 1;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
 
@@ -215,27 +340,82 @@
         }
 
         .logs-section {
-            background: white;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
             margin-top: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: slideInUp 1s ease-out;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .logs-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.8s ease;
+        }
+
+        .logs-section:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 45px rgba(0,0,0,0.12);
+        }
+
+        .logs-section:hover::before {
+            left: 100%;
         }
 
         .logs-container {
-            background: #1e1e1e;
+            background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
             color: #fff;
-            padding: 1rem;
-            border-radius: 5px;
+            padding: 1.5rem;
+            border-radius: 15px;
             height: 300px;
             overflow-y: auto;
             font-family: 'Courier New', monospace;
             font-size: 0.85rem;
             line-height: 1.4;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .logs-container:hover {
+            border-color: rgba(102, 126, 234, 0.3);
+            box-shadow: inset 0 0 20px rgba(102, 126, 234, 0.1);
         }
 
         .log-entry {
             margin-bottom: 0.25rem;
+            opacity: 0;
+            animation: fadeInLog 0.5s ease forwards;
+            padding: 0.2rem 0;
+            border-radius: 3px;
+            transition: background-color 0.2s ease;
+        }
+        
+        .log-entry:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+        
+        @keyframes fadeInLog {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .log-timestamp {
@@ -255,26 +435,68 @@
             align-items: center;
             gap: 0.5rem;
             font-size: 0.9rem;
+            padding: 0.3rem 0.8rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .connection-status:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(255, 255, 255, 0.1);
         }
 
         .connection-indicator {
-            width: 8px;
-            height: 8px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
             background: #28a745;
+            box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
+            transition: all 0.3s ease;
         }
 
         .connection-indicator.disconnected {
             background: #dc3545;
+            box-shadow: 0 0 10px rgba(220, 53, 69, 0.5);
+            animation: pulse 2s infinite;
         }
 
         /* Downloads Section Styles */
         .downloads-section {
-            background: white;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
             margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: slideInUp 0.8s ease-out;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .downloads-section:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 45px rgba(0,0,0,0.12);
+        }
+
+        .downloads-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.8s ease;
+        }
+
+        .downloads-section:hover::before {
+            left: 100%;
         }
 
         .downloads-grid {
@@ -284,20 +506,30 @@
         }
 
         .download-control {
-            border: 2px solid #e1e5e9;
-            border-radius: 10px;
-            padding: 1.5rem;
-            transition: border-color 0.3s ease;
+            border: 2px solid rgba(225, 229, 233, 0.5);
+            border-radius: 15px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
         }
 
         .download-control.available {
             border-color: #28a745;
-            background: #f8fff9;
+            background: rgba(248, 255, 249, 0.9);
+            backdrop-filter: blur(15px);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(40, 167, 69, 0.15);
         }
 
         .download-control h3 {
             margin-bottom: 1rem;
             color: #333;
+            font-weight: 600;
+            position: relative;
+            z-index: 1;
         }
 
         .download-btn {
@@ -355,7 +587,12 @@
 </head>
 <body>
     <div class="header">
-        <h1>🕷️ Crawler Dashboard</h1>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <button class="logout-btn" onclick="goBack()" style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2);">
+                ← Back
+            </button>
+            <h1>🕷️ Fgirl Crawler Dashboard</h1>
+        </div>
         <div style="display: flex; align-items: center; gap: 1rem;">
             <div class="connection-status">
                 <div id="connection-indicator" class="connection-indicator disconnected"></div>
@@ -803,6 +1040,10 @@
 
         function logout() {
             window.location.href = '/logout';
+        }
+        
+        function goBack() {
+            window.location.href = '/website-selection';
         }
         
         // Initialize dashboard
