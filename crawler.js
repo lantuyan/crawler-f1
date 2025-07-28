@@ -49,14 +49,39 @@ class FgirlCrawler {
     async init() {
         console.log('Initializing browser with proxy...');
         
-        // Check for Chrome executable paths on macOS
+        // Check for Chrome executable paths (Linux and macOS)
         const fs = require('fs');
-        const chromePaths = [
-            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-            '/Applications/Chromium.app/Contents/MacOS/Chromium',
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium-browser'
-        ];
+        const os = require('os');
+        const platform = os.platform();
+
+        let chromePaths = [];
+
+        if (platform === 'linux') {
+            chromePaths = [
+                '/usr/bin/google-chrome-stable',
+                '/usr/bin/google-chrome',
+                '/usr/bin/chromium-browser',
+                '/usr/bin/chromium',
+                '/snap/bin/chromium',
+                '/usr/bin/google-chrome-unstable',
+                '/usr/bin/google-chrome-beta'
+            ];
+        } else if (platform === 'darwin') {
+            chromePaths = [
+                '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+                '/Applications/Chromium.app/Contents/MacOS/Chromium',
+                '/usr/bin/google-chrome',
+                '/usr/bin/chromium-browser'
+            ];
+        } else {
+            // Windows or other platforms
+            chromePaths = [
+                'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+                'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+                '/usr/bin/google-chrome',
+                '/usr/bin/chromium-browser'
+            ];
+        }
         
         let executablePath = null;
         for (const path of chromePaths) {
@@ -75,7 +100,8 @@ class FgirlCrawler {
             console.log('No Chrome executable found in standard locations, using Puppeteer bundled Chromium');
         }
         
-        // Try different browser configurations with increasing simplicity
+        // Try different browser configurations optimized for Linux VPS
+        const isLinux = platform === 'linux';
         const configurations = [
             {
                 name: 'with-proxy-full',
@@ -89,15 +115,29 @@ class FgirlCrawler {
                         '--no-first-run',
                         '--no-zygote',
                         '--disable-gpu',
+                        '--disable-software-rasterizer',
+                        '--disable-background-timer-throttling',
+                        '--disable-backgrounding-occluded-windows',
+                        '--disable-renderer-backgrounding',
+                        '--disable-features=TranslateUI',
+                        '--disable-ipc-flooding-protection',
                         '--proxy-server=155.254.39.107:6065',
                         '--ignore-certificate-errors',
                         '--ignore-ssl-errors',
                         '--ignore-certificate-errors-spki-list',
                         '--disable-web-security',
                         '--allow-running-insecure-content',
-                        '--disable-features=VizDisplayCompositor'
+                        '--disable-features=VizDisplayCompositor',
+                        ...(isLinux ? [
+                            '--disable-extensions',
+                            '--disable-plugins',
+                            '--disable-default-apps',
+                            '--disable-sync',
+                            '--no-default-browser-check',
+                            '--disable-background-networking'
+                        ] : [])
                     ],
-                    timeout: 10000
+                    timeout: 15000
                 }
             },
             {
@@ -107,9 +147,12 @@ class FgirlCrawler {
                     args: [
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
-                        '--proxy-server=155.254.39.107:6065'
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu',
+                        '--proxy-server=155.254.39.107:6065',
+                        ...(isLinux ? ['--disable-extensions', '--disable-plugins'] : [])
                     ],
-                    timeout: 10000
+                    timeout: 15000
                 }
             },
             {
@@ -121,33 +164,39 @@ class FgirlCrawler {
                         '--disable-setuid-sandbox',
                         '--disable-dev-shm-usage',
                         '--disable-gpu',
-                        '--disable-features=VizDisplayCompositor'
+                        '--disable-software-rasterizer',
+                        '--disable-features=VizDisplayCompositor',
+                        ...(isLinux ? [
+                            '--disable-extensions',
+                            '--disable-plugins',
+                            '--disable-default-apps'
+                        ] : [])
                     ],
-                    timeout: 10000
+                    timeout: 15000
                 }
             },
             {
                 name: 'without-proxy-minimal',
                 config: {
                     headless: "new",
-                    args: ['--no-sandbox'],
-                    timeout: 10000
+                    args: [
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        ...(isLinux ? ['--disable-dev-shm-usage'] : [])
+                    ],
+                    timeout: 15000
                 }
             },
             {
                 name: 'old-headless-mode',
                 config: {
                     headless: true,
-                    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-                    timeout: 10000
-                }
-            },
-            {
-                name: 'non-headless-fallback',
-                config: {
-                    headless: false,
-                    args: ['--no-sandbox'],
-                    timeout: 10000
+                    args: [
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        ...(isLinux ? ['--disable-dev-shm-usage', '--disable-gpu'] : [])
+                    ],
+                    timeout: 15000
                 }
             }
         ];
