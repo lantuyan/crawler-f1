@@ -72,7 +72,8 @@ let crawlerState = {
         totalProfiles: 0,
         processedProfiles: 0,
         startTime: null,
-        logs: []
+        logs: [],
+        currentPhase: null // Track current phase: 'categories', 'girls', 'completed'
     }
 };
 
@@ -236,35 +237,31 @@ app.post('/api/start-categories-crawler', requireAuth, async (req, res) => {
 });
 
 app.post('/api/start-girls-crawler', requireAuth, async (req, res) => {
-    if (crawlerState.girls.isRunning) {
-        return res.status(400).json({ error: 'Girls crawler is already running' });
+    if (crawlerState.girls.isRunning || crawlerState.categories.isRunning) {
+        return res.status(400).json({ error: 'A crawler is already running' });
     }
 
     try {
-        // Check if list-girl.csv exists
-        const listGirlPath = path.join(__dirname, 'list-girl.csv');
-        if (!fs.existsSync(listGirlPath)) {
-            return res.status(400).json({ error: 'list-girl.csv not found. Run categories crawler first.' });
-        }
-
-        // Reset the stop flag from categories crawler to ensure girls crawler can run properly
+        // Reset the stop flag to ensure crawlers can run properly
         resetStopFlag();
 
+        // Initialize girls crawler state for sequential execution
         crawlerState.girls.isRunning = true;
         crawlerState.girls.startTime = new Date();
         crawlerState.girls.progress = 0;
-        crawlerState.girls.processedProfiles = 0; // Reset processed count to 0 when starting
+        crawlerState.girls.processedProfiles = 0;
         crawlerState.girls.logs = [];
+        crawlerState.girls.currentPhase = 'categories'; // Track current phase
 
-        res.json({ success: true, message: 'Girls crawler started' });
+        res.json({ success: true, message: 'Sequential crawler started (Categories → Girls)' });
 
-        // Start crawler in background
-        startGirlsCrawler();
+        // Start sequential crawler in background
+        startSequentialCrawler();
 
     } catch (error) {
-        console.error('Error starting girls crawler:', error);
+        console.error('Error starting sequential crawler:', error);
         crawlerState.girls.isRunning = false;
-        res.status(500).json({ error: 'Failed to start girls crawler' });
+        res.status(500).json({ error: 'Failed to start sequential crawler' });
     }
 });
 
@@ -387,6 +384,62 @@ app.get('/api/download/list-girl-csv', requireAuth, (req, res) => {
     }
 });
 
+app.get('/api/download/list-girl-stored-csv', requireAuth, (req, res) => {
+    try {
+        const filePath = path.join(__dirname, 'list-girl-stored.csv');
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'list-girl-stored.csv not found. Run the categories crawler first to generate stored data.' });
+        }
+
+        // Check if file has content (more than just header)
+        const stats = fs.statSync(filePath);
+        if (stats.size < 50) { // Assuming header is less than 50 bytes
+            return res.status(400).json({ error: 'list-girl-stored.csv appears to be empty. Run the categories crawler first.' });
+        }
+
+        // Set headers for file download
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="list-girl-stored-${new Date().toISOString().split('T')[0]}.csv"`);
+
+        // Stream the file
+        const fileStream = fs.createReadStream(filePath);
+        fileStream.pipe(res);
+
+        console.log('📥 list-girl-stored.csv downloaded by user');
+
+    } catch (error) {
+        console.error('Error downloading list-girl-stored.csv:', error);
+        res.status(500).json({ error: 'Failed to download file' });
+    }
+});
+
+// Manual CSV synchronization endpoint
+app.post('/api/sync-csv-data', requireAuth, async (req, res) => {
+    try {
+        console.log('🔄 Manual CSV synchronization requested by user');
+
+        const syncResult = await synchronizeCSVData();
+
+        res.json({
+            success: true,
+            message: 'CSV data synchronization completed successfully',
+            results: syncResult
+        });
+
+        console.log('✅ Manual CSV synchronization completed successfully');
+
+    } catch (error) {
+        console.error('❌ Manual CSV synchronization failed:', error);
+        res.status(500).json({
+            success: false,
+            error: 'CSV synchronization failed',
+            message: error.message
+        });
+    }
+});
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
@@ -434,6 +487,156 @@ function setupFileWatching() {
     }
 
     console.log('File watching setup complete');
+}
+
+// CSV Data Synchronization Function
+async function synchronizeCSVData() {
+    const listGirlPath = path.join(__dirname, 'list-girl.csv');
+    const listGirlStoredPath = path.join(__dirname, 'list-girl-stored.csv');
+
+    try {
+        // Read current crawl results
+        const currentData = await readCSVFile(listGirlPath);
+        console.log(`📊 Read ${currentData.length} records from list-girl.csv`);
+
+        // Read or create stored data file
+        let storedData = [];
+        if (fs.existsSync(listGirlStoredPath)) {
+            storedData = await readCSVFile(listGirlStoredPath);
+            console.log(`📊 Read ${storedData.length} records from list-girl-stored.csv`);
+        } else {
+            // Create stored file with header if it doesn't exist
+            const header = 'Name,Location,Profile URL\n';
+            fs.writeFileSync(listGirlStoredPath, header);
+            console.log(`📝 Created new list-girl-stored.csv with header`);
+        }
+
+        // Create URL-based lookup maps for efficient comparison
+        const currentUrlMap = new Map();
+        const storedUrlMap = new Map();
+
+        currentData.forEach(record => {
+            if (record.profile_url && record.profile_url.trim()) {
+                currentUrlMap.set(record.profile_url.trim(), record);
+            }
+        });
+
+        storedData.forEach(record => {
+            if (record.profile_url && record.profile_url.trim()) {
+                storedUrlMap.set(record.profile_url.trim(), record);
+            }
+        });
+
+        // 1. Identify new records (in current but not in stored)
+        const newRecords = [];
+        currentUrlMap.forEach((record, url) => {
+            if (!storedUrlMap.has(url)) {
+                newRecords.push(record);
+            }
+        });
+
+        // 2. Identify duplicates to remove from current (in both current and stored)
+        const duplicatesToRemove = [];
+        currentUrlMap.forEach((_, url) => {
+            if (storedUrlMap.has(url)) {
+                duplicatesToRemove.push(url);
+            }
+        });
+
+        // 3. Identify obsolete records to remove from stored (in stored but not in current)
+        const obsoleteRecords = [];
+        storedUrlMap.forEach((_, url) => {
+            if (!currentUrlMap.has(url)) {
+                obsoleteRecords.push(url);
+            }
+        });
+
+        console.log(`🔍 Analysis: ${newRecords.length} new, ${duplicatesToRemove.length} duplicates, ${obsoleteRecords.length} obsolete`);
+
+        // 4. Update list-girl.csv (remove duplicates, keep new records)
+        const updatedCurrentData = currentData.filter(record =>
+            record.profile_url && !storedUrlMap.has(record.profile_url.trim())
+        );
+        await writeCSVFile(listGirlPath, updatedCurrentData);
+        console.log(`✅ Updated list-girl.csv: removed ${duplicatesToRemove.length} duplicates, kept ${updatedCurrentData.length} new records`);
+
+        // 5. Update list-girl-stored.csv (remove obsolete, add new)
+        const updatedStoredData = storedData.filter(record =>
+            record.profile_url && currentUrlMap.has(record.profile_url.trim())
+        );
+        updatedStoredData.push(...newRecords);
+        await writeCSVFile(listGirlStoredPath, updatedStoredData);
+        console.log(`✅ Updated list-girl-stored.csv: removed ${obsoleteRecords.length} obsolete, added ${newRecords.length} new records`);
+
+        return {
+            newRecords: newRecords.length,
+            duplicatesRemoved: duplicatesToRemove.length,
+            obsoleteRecords: obsoleteRecords.length,
+            totalStored: updatedStoredData.length,
+            totalCurrent: updatedCurrentData.length
+        };
+
+    } catch (error) {
+        console.error('❌ CSV synchronization error:', error);
+        throw new Error(`CSV synchronization failed: ${error.message}`);
+    }
+}
+
+// Helper function to read CSV file and parse records
+async function readCSVFile(filePath) {
+    try {
+        if (!fs.existsSync(filePath)) {
+            return [];
+        }
+
+        const csvContent = fs.readFileSync(filePath, 'utf8');
+        const lines = csvContent.trim().split('\n');
+        const records = [];
+
+        // Skip header line and process each line
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line) {
+                // Parse CSV line (handle quoted fields)
+                const matches = line.match(/(?:^|,)("(?:[^"]+|"")*"|[^,]*)/g);
+                if (matches && matches.length >= 3) {
+                    const name = matches[0].replace(/^,?"?|"?$/g, '').replace(/""/g, '"');
+                    const location = matches[1].replace(/^,?"?|"?$/g, '').replace(/""/g, '"');
+                    const profile_url = matches[2].replace(/^,?"?|"?$/g, '');
+
+                    if (profile_url && profile_url.startsWith('http')) {
+                        records.push({ name, location, profile_url });
+                    }
+                }
+            }
+        }
+
+        return records;
+    } catch (error) {
+        console.error(`Error reading CSV file ${filePath}:`, error);
+        throw error;
+    }
+}
+
+// Helper function to write CSV file with records
+async function writeCSVFile(filePath, records) {
+    try {
+        // Create CSV content with header
+        let csvContent = 'Name,Location,Profile URL\n';
+
+        // Add records
+        records.forEach(record => {
+            const escapedName = `"${record.name.replace(/"/g, '""')}"`;
+            const escapedLocation = `"${record.location.replace(/"/g, '""')}"`;
+            csvContent += `${escapedName},${escapedLocation},${record.profile_url}\n`;
+        });
+
+        fs.writeFileSync(filePath, csvContent);
+        console.log(`📝 Written ${records.length} records to ${path.basename(filePath)}`);
+    } catch (error) {
+        console.error(`Error writing CSV file ${filePath}:`, error);
+        throw error;
+    }
 }
 
 // Crawler implementation functions
@@ -575,6 +778,31 @@ async function startCategoriesCrawler() {
             });
             broadcastUpdate('stopped', { type: 'categories' });
         } else {
+            // Run data synchronization after successful completion
+            try {
+                crawlerState.categories.logs.push({
+                    timestamp: new Date(),
+                    message: `🔄 Starting data synchronization between list-girl.csv and list-girl-stored.csv...`
+                });
+                broadcastUpdate('log', { type: 'categories', message: '🔄 Starting data synchronization...' });
+
+                const syncResult = await synchronizeCSVData();
+
+                crawlerState.categories.logs.push({
+                    timestamp: new Date(),
+                    message: `✅ Data synchronization completed: ${syncResult.newRecords} new records added, ${syncResult.duplicatesRemoved} duplicates removed, ${syncResult.obsoleteRecords} obsolete records cleaned`
+                });
+                broadcastUpdate('log', { type: 'categories', message: `✅ Sync completed: ${syncResult.newRecords} new, ${syncResult.duplicatesRemoved} duplicates removed, ${syncResult.obsoleteRecords} obsolete cleaned` });
+
+            } catch (syncError) {
+                console.error('Data synchronization error:', syncError);
+                crawlerState.categories.logs.push({
+                    timestamp: new Date(),
+                    message: `❌ Data synchronization failed: ${syncError.message}`
+                });
+                broadcastUpdate('log', { type: 'categories', message: `❌ Sync failed: ${syncError.message}` });
+            }
+
             broadcastUpdate('complete', { type: 'categories' });
         }
 
@@ -607,17 +835,19 @@ async function startGirlsCrawler() {
                 message: message
             });
 
-            // Extract progress information from logs - only count successfully saved profiles
-            if (message.includes('Valid profile data saved:')) {
-                crawlerState.girls.processedProfiles++;
-                if (crawlerState.girls.totalProfiles > 0) {
-                    crawlerState.girls.progress = Math.round((crawlerState.girls.processedProfiles / crawlerState.girls.totalProfiles) * 100);
-                }
-            }
+            // Note: Progress tracking is now handled by the crawler's real-time state management
+            // The crawler will update crawlerState.girls.processedProfiles and progress directly
+            // No need to extract from logs anymore since we have real-time updates
 
             broadcastUpdate('log', { type: 'girls', message });
             originalLog(...args);
         };
+
+        // Import the girls crawler and initialize global state
+        const { runGirlsCrawlerForWeb, initializeGlobalState } = require('./crawler-girl');
+
+        // Initialize the crawler's global state reference for real-time updates
+        initializeGlobalState(crawlerState);
 
         // Start the crawler using the web-compatible function
         const result = await runGirlsCrawlerForWeb();
@@ -637,6 +867,207 @@ async function startGirlsCrawler() {
             message: `Error: ${error.message}`
         });
         broadcastUpdate('error', { type: 'girls', error: error.message });
+    }
+}
+
+// Sequential crawler function that runs categories first, then girls
+async function startSequentialCrawler() {
+    try {
+        console.log('🚀 Starting sequential crawler: Categories → Girls');
+
+        // Phase 1: Categories Crawler
+        crawlerState.girls.currentPhase = 'categories';
+        crawlerState.girls.progress = 0;
+        broadcastUpdate('phase-change', { type: 'girls', phase: 'categories' });
+
+        // Initialize categories state for this run
+        crawlerState.categories.isRunning = true;
+        crawlerState.categories.startTime = new Date();
+        crawlerState.categories.progress = 0;
+        crawlerState.categories.totalGirlsExpected = 0;
+        crawlerState.categories.logs = [];
+
+        console.log('📋 Phase 1: Starting Categories Crawler...');
+        await runCategoriesCrawlerSequential();
+
+        // Check if categories crawler was stopped
+        if (!crawlerState.girls.isRunning) {
+            console.log('🛑 Sequential crawler stopped during categories phase');
+            return;
+        }
+
+        console.log('✅ Phase 1 completed: Categories Crawler finished');
+
+        // Phase 2: Girls Crawler
+        crawlerState.girls.currentPhase = 'girls';
+        crawlerState.girls.progress = 50; // Start at 50% since categories is done
+        broadcastUpdate('phase-change', { type: 'girls', phase: 'girls' });
+
+        console.log('👥 Phase 2: Starting Girls Crawler...');
+        await runGirlsCrawlerSequential();
+
+        // Final completion
+        crawlerState.girls.isRunning = false;
+        crawlerState.girls.progress = 100;
+        crawlerState.girls.currentPhase = 'completed';
+        broadcastUpdate('complete', { type: 'girls' });
+
+        console.log('🎉 Sequential crawler completed successfully!');
+
+    } catch (error) {
+        console.error('Sequential crawler error:', error);
+        crawlerState.girls.isRunning = false;
+        crawlerState.categories.isRunning = false;
+        crawlerState.girls.logs.push({
+            timestamp: new Date(),
+            message: `Error: ${error.message}`
+        });
+        broadcastUpdate('error', { type: 'girls', error: error.message });
+    }
+}
+
+// Categories crawler for sequential execution
+async function runCategoriesCrawlerSequential() {
+    // Override console.log to capture logs for girls crawler display
+    const originalLog = console.log;
+    console.log = (...args) => {
+        const message = args.join(' ');
+
+        // Add to girls crawler logs with phase prefix
+        crawlerState.girls.logs.push({
+            timestamp: new Date(),
+            message: `[Categories] ${message}`
+        });
+
+        // Also update categories state for internal tracking
+        crawlerState.categories.logs.push({
+            timestamp: new Date(),
+            message: message
+        });
+
+        // Extract progress information and update girls progress (0-50%)
+        if (message.includes('Target:')) {
+            const match = message.match(/(\d+(?:,\d+)*)\s+girls/);
+            if (match) {
+                crawlerState.categories.totalGirlsExpected = parseInt(match[1].replace(/,/g, ''));
+            }
+        }
+
+        if (message.includes('📊 Progress:') && message.includes('girls in CSV')) {
+            const match = message.match(/📊 Progress: (\d+(?:,\d+)*)/);
+            if (match) {
+                const crawledGirls = parseInt(match[1].replace(/,/g, ''));
+                crawlerState.categories.crawledGirls = crawledGirls;
+
+                // Update girls progress (0-50% for categories phase)
+                if (crawlerState.categories.totalGirlsExpected > 0) {
+                    const categoriesProgress = Math.min(50, (crawledGirls / crawlerState.categories.totalGirlsExpected) * 50);
+                    crawlerState.girls.progress = categoriesProgress;
+                }
+            }
+        }
+
+        broadcastUpdate('log', { type: 'girls', message: `[Categories] ${message}` });
+        originalLog(...args);
+    };
+
+    try {
+        // Start the categories crawler
+        const result = await runCategoriesCrawlerForWeb();
+
+        // Restore console.log
+        console.log = originalLog;
+
+        crawlerState.categories.isRunning = false;
+        crawlerState.categories.crawledGirls = result.totalCrawled;
+
+        return result;
+
+    } catch (error) {
+        console.log = originalLog;
+        throw error;
+    }
+}
+
+// Girls crawler for sequential execution
+async function runGirlsCrawlerSequential() {
+    // Read list-girl.csv to get total count
+    const listGirlPath = path.join(__dirname, 'list-girl.csv');
+    const csvContent = fs.readFileSync(listGirlPath, 'utf8');
+    const lines = csvContent.trim().split('\n');
+    crawlerState.girls.totalProfiles = Math.max(0, lines.length - 1);
+    crawlerState.girls.processedProfiles = 0;
+
+    // Override console.log to capture logs
+    const originalLog = console.log;
+    console.log = (...args) => {
+        const message = args.join(' ');
+        crawlerState.girls.logs.push({
+            timestamp: new Date(),
+            message: `[Girls] ${message}`
+        });
+
+        broadcastUpdate('log', { type: 'girls', message: `[Girls] ${message}` });
+        originalLog(...args);
+    };
+
+    try {
+        // Import the girls crawler module
+        const crawlerGirlModule = require('./crawler-girl');
+        const { runGirlsCrawlerForWeb, initializeGlobalState } = crawlerGirlModule;
+
+        // Store the original updateGlobalProcessedProfiles function
+        const originalUpdateGlobalProcessedProfiles = crawlerGirlModule.updateGlobalProcessedProfiles;
+
+        // Override the updateGlobalProcessedProfiles function to map progress to 50-100%
+        crawlerGirlModule.updateGlobalProcessedProfiles = function(newProcessed) {
+            if (crawlerState && crawlerState.girls) {
+                crawlerState.girls.processedProfiles = newProcessed;
+
+                // Calculate raw progress (0-100%)
+                let rawProgress = 0;
+                if (crawlerState.girls.totalProfiles > 0) {
+                    const progressFloat = (newProcessed / crawlerState.girls.totalProfiles) * 100;
+                    rawProgress = Math.round(progressFloat);
+
+                    // Ensure progress reaches 100% when all processable profiles are completed
+                    if (newProcessed >= crawlerState.girls.totalProfiles || progressFloat >= 99.5) {
+                        rawProgress = 100;
+                    }
+                } else if (newProcessed > 0) {
+                    rawProgress = 100;
+                }
+
+                // Map raw progress (0-100%) to sequential progress (50-100%)
+                const mappedProgress = 50 + (rawProgress * 0.5);
+                crawlerState.girls.progress = Math.round(mappedProgress);
+
+                console.log(`📊 Sequential update: Processed Profiles = ${newProcessed}/${crawlerState.girls.totalProfiles} (${rawProgress}% → ${crawlerState.girls.progress}%)`);
+            }
+        };
+
+        // Initialize the crawler's global state reference for real-time updates
+        initializeGlobalState(crawlerState);
+
+        // Start the crawler using the web-compatible function
+        const result = await runGirlsCrawlerForWeb();
+
+        // Restore the original function
+        crawlerGirlModule.updateGlobalProcessedProfiles = originalUpdateGlobalProcessedProfiles;
+
+        // Restore console.log
+        console.log = originalLog;
+
+        return result;
+
+    } catch (error) {
+        // Restore the original function in case of error
+        if (typeof originalUpdateGlobalProcessedProfiles !== 'undefined') {
+            const crawlerGirlModule = require('./crawler-girl');
+            crawlerGirlModule.updateGlobalProcessedProfiles = originalUpdateGlobalProcessedProfiles;
+        }
+        console.log = originalLog;
+        throw error;
     }
 }
 

@@ -247,6 +247,120 @@ class CloudflareHandler {
 // Global Cloudflare handler instance
 const cloudflareHandler = new CloudflareHandler();
 
+// Global state for real-time updates (compatible with web interface)
+let globalCrawlerState = null;
+
+// Shared state for multi-threaded crawling
+const sharedCrawlState = {
+    totalProcessed: 0,
+    totalFailed: 0,
+    totalValidProfiles: 0,
+    lock: false
+};
+
+/**
+ * Initialize global crawler state reference for real-time updates
+ * This allows the crawler to update the web interface state in real-time
+ * @param {Object} stateRef - Reference to the global crawler state object
+ */
+function initializeGlobalState(stateRef) {
+    globalCrawlerState = stateRef;
+    console.log('🔗 Global crawler state initialized for real-time updates');
+}
+
+/**
+ * Update the global total profiles count in real-time
+ * @param {number} newTotal - New total profiles count
+ */
+function updateGlobalTotalProfiles(newTotal) {
+    if (globalCrawlerState && globalCrawlerState.girls) {
+        globalCrawlerState.girls.totalProfiles = newTotal;
+        console.log(`📊 Real-time update: Total Profiles = ${newTotal}`);
+    }
+}
+
+/**
+ * Update the global processed profiles count in real-time
+ * @param {number} newProcessed - New processed profiles count
+ */
+function updateGlobalProcessedProfiles(newProcessed) {
+    if (globalCrawlerState && globalCrawlerState.girls) {
+        globalCrawlerState.girls.processedProfiles = newProcessed;
+        // Update progress percentage with more robust calculation
+        if (globalCrawlerState.girls.totalProfiles > 0) {
+            const progressFloat = (newProcessed / globalCrawlerState.girls.totalProfiles) * 100;
+            globalCrawlerState.girls.progress = Math.round(progressFloat);
+
+            // Ensure progress reaches 100% when all processable profiles are completed
+            // Use >= comparison and also check if we're very close to 100%
+            if (newProcessed >= globalCrawlerState.girls.totalProfiles || progressFloat >= 99.5) {
+                globalCrawlerState.girls.progress = 100;
+            }
+        } else if (newProcessed > 0) {
+            // If totalProfiles is 0 but we have processed profiles, set to 100%
+            globalCrawlerState.girls.progress = 100;
+        }
+        console.log(`📊 Real-time update: Processed Profiles = ${newProcessed}/${globalCrawlerState.girls.totalProfiles} (${globalCrawlerState.girls.progress}%)`);
+    }
+}
+
+/**
+ * Thread-safe increment of processed profiles count
+ */
+async function incrementProcessedProfiles() {
+    // Wait for lock to be released
+    while (sharedCrawlState.lock) {
+        await new Promise(resolve => setTimeout(resolve, 1));
+    }
+
+    sharedCrawlState.lock = true;
+    sharedCrawlState.totalProcessed++;
+    updateGlobalProcessedProfiles(sharedCrawlState.totalProcessed);
+    sharedCrawlState.lock = false;
+}
+
+/**
+ * Thread-safe decrement of total valid profiles count
+ */
+async function decrementTotalValidProfiles() {
+    // Wait for lock to be released
+    while (sharedCrawlState.lock) {
+        await new Promise(resolve => setTimeout(resolve, 1));
+    }
+
+    sharedCrawlState.lock = true;
+    sharedCrawlState.totalFailed++;
+    sharedCrawlState.totalValidProfiles--;
+    updateGlobalTotalProfiles(sharedCrawlState.totalValidProfiles);
+    sharedCrawlState.lock = false;
+}
+
+/**
+ * Initialize shared state for multi-threaded crawling
+ * @param {number} totalUrls - Total number of URLs to process
+ */
+function initializeSharedState(totalUrls) {
+    sharedCrawlState.totalProcessed = 0;
+    sharedCrawlState.totalFailed = 0;
+    sharedCrawlState.totalValidProfiles = totalUrls;
+    sharedCrawlState.lock = false;
+}
+
+/**
+ * Check if crawling is complete and set progress to 100% if needed
+ * @param {number} totalUrlsProcessed - Total number of URLs that have been processed (success + failed)
+ * @param {number} originalTotalUrls - Original total number of URLs
+ */
+function checkCrawlingCompletion(totalUrlsProcessed, originalTotalUrls) {
+    if (globalCrawlerState && globalCrawlerState.girls) {
+        // If we've processed all URLs (either successfully or failed), set progress to 100%
+        if (totalUrlsProcessed >= originalTotalUrls) {
+            globalCrawlerState.girls.progress = 100;
+            console.log(`🎯 Crawling completed: ${totalUrlsProcessed}/${originalTotalUrls} URLs processed - Progress set to 100%`);
+        }
+    }
+}
+
 // ===== CONFIGURATION =====
 
 // Basic crawler configuration
@@ -1689,9 +1803,15 @@ async function crawlProfiles() {
     let processed = 0;
     let successfulWrites = 0;
     let duplicatesSkipped = 0;
+    let failedProfiles = 0;
+    let totalValidProfiles = testUrls.length; // Track the effective total count
 
     console.log(`Real-time CSV writing to: ${OUTPUT_FILE}`);
     console.log('Data will be written immediately as each profile is processed');
+
+    // Initialize global state with total profiles count
+    updateGlobalTotalProfiles(totalValidProfiles);
+    updateGlobalProcessedProfiles(0);
 
     for (const url of testUrls) {
         try {
@@ -1707,18 +1827,37 @@ async function crawlProfiles() {
                     processed++; // Only increment when successfully saved to CSV
                     successfulWrites++;
                     console.log(`✅ Valid profile data saved: ${data.nickname}`);
+
+                    // Update global state in real-time
+                    updateGlobalProcessedProfiles(processed);
                 } else {
                     duplicatesSkipped++;
                     console.log(`⚠️ Duplicate profile skipped: ${data.nickname}`);
                 }
             } else {
-                console.log(`❌ Invalid/incomplete data for ${url} - not saved to CSV`);
-                if (data) {
-                    console.log(`   Reason: ${data.nickname || 'No nickname'} - ${data.status || 'Unknown status'}`);
+                // Check if this is a failed profile after exhausting retries
+                if (data && data.nickname === 'RETRY_EXHAUSTED' && data.status === 'failed_after_retries') {
+                    failedProfiles++;
+                    totalValidProfiles--; // Decrease total count for failed profiles
+                    console.log(`❌ Profile failed after ${CLOUDFLARE_CONFIG.maxRetries} retry attempts: ${url}`);
+                    console.log(`   Failed profiles count: ${failedProfiles}`);
+
+                    // Update global total profiles count in real-time
+                    updateGlobalTotalProfiles(totalValidProfiles);
+
+                    // Log failed profile for debugging
+                    logFailedProfile(url, data);
+                } else {
+                    console.log(`❌ Invalid/incomplete data for ${url} - not saved to CSV`);
+                    if (data) {
+                        console.log(`   Reason: ${data.nickname || 'No nickname'} - ${data.status || 'Unknown status'}`);
+                    }
                 }
             }
 
-            console.log(`Progress: ${processed}/${testUrls.length} (${Math.round(processed/testUrls.length*100)}%) | Written: ${successfulWrites} | Duplicates: ${duplicatesSkipped}`);
+            // Show progress with accurate total count (excluding failed profiles)
+            const progressPercentage = totalValidProfiles > 0 ? Math.round(processed/totalValidProfiles*100) : 0;
+            console.log(`Progress: ${processed}/${totalValidProfiles} (${progressPercentage}%) | Written: ${successfulWrites} | Duplicates: ${duplicatesSkipped} | Failed: ${failedProfiles}`);
 
             // Add delay between requests to be respectful
             await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
@@ -1726,11 +1865,19 @@ async function crawlProfiles() {
         } catch (error) {
             console.error(`❌ Failed to process ${url}:`, error.message);
             console.log(`❌ Failed to process ${url} after all retries - not saved to CSV`);
-            // Don't increment processed for failed extractions
+            failedProfiles++;
+            totalValidProfiles--; // Decrease total count for failed profiles
+
+            // Update global total profiles count in real-time
+            updateGlobalTotalProfiles(totalValidProfiles);
         }
     }
 
     await browser.close();
+
+    // Final completion check - ensure progress reaches 100%
+    const totalUrlsProcessed = processed + failedProfiles;
+    checkCrawlingCompletion(totalUrlsProcessed, testUrls.length);
 
     // Summary
     console.log(`\n=== Crawling Summary ===`);
@@ -1738,6 +1885,9 @@ async function crawlProfiles() {
     console.log(`✓ Real-time CSV writing completed`);
     console.log(`✓ Successful writes: ${successfulWrites}`);
     console.log(`✓ Duplicates skipped: ${duplicatesSkipped}`);
+    console.log(`❌ Failed profiles (after ${CLOUDFLARE_CONFIG.maxRetries} retries): ${failedProfiles}`);
+    console.log(`📊 Effective success rate: ${totalValidProfiles > 0 ? Math.round(processed/totalValidProfiles*100) : 0}%`);
+    console.log(`📊 Total URLs processed: ${totalUrlsProcessed}/${testUrls.length}`);
     console.log(`✓ Results saved to ${OUTPUT_FILE}`);
 
     // Log Cloudflare statistics
@@ -1765,6 +1915,13 @@ async function crawlProfilesMultiThreaded() {
     console.log(`Using ${numThreads} threads, ~${urlsPerThread} URLs per thread`);
     console.log(`Real-time CSV writing to: ${OUTPUT_FILE}`);
 
+    // Initialize shared state for multi-threaded crawling
+    initializeSharedState(testUrls.length);
+
+    // Initialize global state with total profiles count
+    updateGlobalTotalProfiles(testUrls.length);
+    updateGlobalProcessedProfiles(0);
+
     // Create thread tasks
     const threadTasks = [];
     for (let threadId = 0; threadId < numThreads; threadId++) {
@@ -1788,19 +1945,31 @@ async function crawlProfilesMultiThreaded() {
         let totalProcessed = 0;
         let totalSuccessful = 0;
         let totalDuplicates = 0;
+        let totalFailed = 0;
 
         results.forEach((threadResult, index) => {
-            console.log(`Thread ${index + 1} completed: ${threadResult.processed} processed, ${threadResult.successful} written, ${threadResult.duplicates} duplicates`);
+            console.log(`Thread ${index + 1} completed: ${threadResult.processed} processed, ${threadResult.successful} written, ${threadResult.duplicates} duplicates, ${threadResult.failed || 0} failed`);
             totalProcessed += threadResult.processed;
             totalSuccessful += threadResult.successful;
             totalDuplicates += threadResult.duplicates;
+            totalFailed += threadResult.failed || 0;
         });
+
+        const totalValidProfiles = urls.length - totalFailed;
+        const effectiveSuccessRate = totalValidProfiles > 0 ? Math.round(totalProcessed/totalValidProfiles*100) : 0;
+
+        // Final completion check - ensure progress reaches 100%
+        const totalUrlsProcessed = totalProcessed + totalFailed;
+        checkCrawlingCompletion(totalUrlsProcessed, urls.length);
 
         console.log(`\n=== Multi-threaded Crawling Summary ===`);
         console.log(`✓ All threads completed`);
         console.log(`✓ Total profiles processed: ${totalProcessed}`);
         console.log(`✓ Successful writes: ${totalSuccessful}`);
         console.log(`✓ Duplicates skipped: ${totalDuplicates}`);
+        console.log(`❌ Failed profiles (after ${CLOUDFLARE_CONFIG.maxRetries} retries): ${totalFailed}`);
+        console.log(`📊 Effective success rate: ${effectiveSuccessRate}%`);
+        console.log(`📊 Total URLs processed: ${totalUrlsProcessed}/${urls.length}`);
         console.log(`✓ Real-time CSV writing completed`);
         console.log(`✓ Results saved to ${OUTPUT_FILE}`);
 
@@ -1821,6 +1990,8 @@ async function crawlBatch(urls, threadId) {
     let processed = 0;
     let successful = 0;
     let duplicates = 0;
+    let failed = 0;
+    let totalValidProfiles = urls.length; // Track the effective total count
 
     try {
         // Initialize browser for this thread
@@ -1865,18 +2036,37 @@ async function crawlBatch(urls, threadId) {
                         processed++; // Only increment when successfully saved to CSV
                         successful++;
                         console.log(`✅ Thread ${threadId}: Valid profile data saved: ${data.nickname}`);
+
+                        // Update global state in real-time (thread-safe)
+                        await incrementProcessedProfiles();
                     } else {
                         duplicates++;
                         console.log(`⚠️ Thread ${threadId}: Duplicate profile skipped: ${data.nickname}`);
                     }
                 } else {
-                    console.log(`❌ Thread ${threadId}: Invalid/incomplete data for ${url} - not saved to CSV`);
-                    if (data) {
-                        console.log(`   Reason: ${data.nickname || 'No nickname'} - ${data.status || 'Unknown status'}`);
+                    // Check if this is a failed profile after exhausting retries
+                    if (data && data.nickname === 'RETRY_EXHAUSTED' && data.status === 'failed_after_retries') {
+                        failed++;
+                        totalValidProfiles--; // Decrease total count for failed profiles
+                        console.log(`❌ Thread ${threadId}: Profile failed after ${CLOUDFLARE_CONFIG.maxRetries} retry attempts: ${url}`);
+                        console.log(`   Failed profiles count: ${failed}`);
+
+                        // Update global state in real-time (thread-safe)
+                        await decrementTotalValidProfiles();
+
+                        // Log failed profile for debugging
+                        logFailedProfile(url, data, threadId);
+                    } else {
+                        console.log(`❌ Thread ${threadId}: Invalid/incomplete data for ${url} - not saved to CSV`);
+                        if (data) {
+                            console.log(`   Reason: ${data.nickname || 'No nickname'} - ${data.status || 'Unknown status'}`);
+                        }
                     }
                 }
 
-                console.log(`Thread ${threadId}: ${processed}/${urls.length} | ${data.nickname} | Written: ${successful} | Duplicates: ${duplicates}`);
+                // Show progress with accurate total count (excluding failed profiles)
+                const progressPercentage = totalValidProfiles > 0 ? Math.round(processed/totalValidProfiles*100) : 0;
+                console.log(`Thread ${threadId}: ${processed}/${totalValidProfiles} (${progressPercentage}%) | ${data?.nickname || 'N/A'} | Written: ${successful} | Duplicates: ${duplicates} | Failed: ${failed}`);
 
                 // Add delay between requests
                 if (processed < urls.length) {
@@ -1886,16 +2076,20 @@ async function crawlBatch(urls, threadId) {
             } catch (error) {
                 console.error(`❌ Thread ${threadId}: Failed to process ${url}:`, error.message);
                 console.log(`❌ Thread ${threadId}: Failed to process ${url} after all retries - not saved to CSV`);
-                // Don't increment processed for failed extractions
+                failed++;
+                totalValidProfiles--; // Decrease total count for failed profiles
+
+                // Update global state in real-time (thread-safe)
+                await decrementTotalValidProfiles();
             }
         }
 
         console.log(`Thread ${threadId}: Completed batch processing`);
-        return { processed, successful, duplicates };
+        return { processed, successful, duplicates, failed };
 
     } catch (error) {
         console.error(`Thread ${threadId}: Batch processing error:`, error.message);
-        return { processed, successful, duplicates };
+        return { processed, successful, duplicates, failed };
     } finally {
         if (browser) {
             await browser.close();
@@ -1933,6 +2127,31 @@ if (require.main === module) {
 }
 
 // ===== ENHANCED LOGGING AND MONITORING =====
+
+/**
+ * Logs a failed profile for debugging purposes
+ * @param {string} url - The URL that failed
+ * @param {Object} data - The failed profile data
+ * @param {string} threadId - Thread identifier (optional)
+ */
+function logFailedProfile(url, data, threadId = '') {
+    const timestamp = new Date().toISOString();
+    const prefix = threadId ? `Thread ${threadId}: ` : '';
+
+    console.log(`\n${prefix}🚨 FAILED PROFILE DEBUG INFO - ${timestamp}`);
+    console.log(`URL: ${url}`);
+    console.log(`Last Error: ${data.lastError || 'Unknown error'}`);
+
+    if (data.lastDetection) {
+        console.log(`Block Type: ${data.lastDetection.blockType || 'Unknown'}`);
+        console.log(`Confidence: ${data.lastDetection.confidence || 'N/A'}`);
+        if (data.lastDetection.indicators && data.lastDetection.indicators.length > 0) {
+            console.log(`Indicators: ${data.lastDetection.indicators.join(', ')}`);
+        }
+    }
+    console.log(`Max Retries Attempted: ${CLOUDFLARE_CONFIG.maxRetries}`);
+    console.log('─'.repeat(50));
+}
 
 /**
  * Logs comprehensive statistics about the crawling session
@@ -2025,9 +2244,19 @@ module.exports = {
     // Utility functions
     saveDataToCSVRealtime,
     logCrawlingStats,
+    logFailedProfile, // Failed profile logging function
     isValidProfileData, // Data validation function
     determineBlockType, // Block type detection function
     clearDetailGirlsCsv, // CSV clearing function
+
+    // Real-time state management functions
+    initializeGlobalState, // Initialize global state reference
+    updateGlobalTotalProfiles, // Update total profiles count
+    updateGlobalProcessedProfiles, // Update processed profiles count
+    incrementProcessedProfiles, // Thread-safe increment processed
+    decrementTotalValidProfiles, // Thread-safe decrement total
+    initializeSharedState, // Initialize shared state for multi-threading
+    checkCrawlingCompletion, // Check and set 100% completion
 
     // Cloudflare handling
     cloudflareHandler,
