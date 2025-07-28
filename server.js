@@ -72,7 +72,8 @@ let crawlerState = {
         totalProfiles: 0,
         processedProfiles: 0,
         startTime: null,
-        logs: []
+        logs: [],
+        currentPhase: null // Track current phase: 'categories', 'girls', 'completed'
     }
 };
 
@@ -236,35 +237,31 @@ app.post('/api/start-categories-crawler', requireAuth, async (req, res) => {
 });
 
 app.post('/api/start-girls-crawler', requireAuth, async (req, res) => {
-    if (crawlerState.girls.isRunning) {
-        return res.status(400).json({ error: 'Girls crawler is already running' });
+    if (crawlerState.girls.isRunning || crawlerState.categories.isRunning) {
+        return res.status(400).json({ error: 'A crawler is already running' });
     }
 
     try {
-        // Check if list-girl.csv exists
-        const listGirlPath = path.join(__dirname, 'list-girl.csv');
-        if (!fs.existsSync(listGirlPath)) {
-            return res.status(400).json({ error: 'list-girl.csv not found. Run categories crawler first.' });
-        }
-
-        // Reset the stop flag from categories crawler to ensure girls crawler can run properly
+        // Reset the stop flag to ensure crawlers can run properly
         resetStopFlag();
 
+        // Initialize girls crawler state for sequential execution
         crawlerState.girls.isRunning = true;
         crawlerState.girls.startTime = new Date();
         crawlerState.girls.progress = 0;
-        crawlerState.girls.processedProfiles = 0; // Reset processed count to 0 when starting
+        crawlerState.girls.processedProfiles = 0;
         crawlerState.girls.logs = [];
+        crawlerState.girls.currentPhase = 'categories'; // Track current phase
 
-        res.json({ success: true, message: 'Girls crawler started' });
+        res.json({ success: true, message: 'Sequential crawler started (Categories → Girls)' });
 
-        // Start crawler in background
-        startGirlsCrawler();
+        // Start sequential crawler in background
+        startSequentialCrawler();
 
     } catch (error) {
-        console.error('Error starting girls crawler:', error);
+        console.error('Error starting sequential crawler:', error);
         crawlerState.girls.isRunning = false;
-        res.status(500).json({ error: 'Failed to start girls crawler' });
+        res.status(500).json({ error: 'Failed to start sequential crawler' });
     }
 });
 
@@ -870,6 +867,207 @@ async function startGirlsCrawler() {
             message: `Error: ${error.message}`
         });
         broadcastUpdate('error', { type: 'girls', error: error.message });
+    }
+}
+
+// Sequential crawler function that runs categories first, then girls
+async function startSequentialCrawler() {
+    try {
+        console.log('🚀 Starting sequential crawler: Categories → Girls');
+
+        // Phase 1: Categories Crawler
+        crawlerState.girls.currentPhase = 'categories';
+        crawlerState.girls.progress = 0;
+        broadcastUpdate('phase-change', { type: 'girls', phase: 'categories' });
+
+        // Initialize categories state for this run
+        crawlerState.categories.isRunning = true;
+        crawlerState.categories.startTime = new Date();
+        crawlerState.categories.progress = 0;
+        crawlerState.categories.totalGirlsExpected = 0;
+        crawlerState.categories.logs = [];
+
+        console.log('📋 Phase 1: Starting Categories Crawler...');
+        await runCategoriesCrawlerSequential();
+
+        // Check if categories crawler was stopped
+        if (!crawlerState.girls.isRunning) {
+            console.log('🛑 Sequential crawler stopped during categories phase');
+            return;
+        }
+
+        console.log('✅ Phase 1 completed: Categories Crawler finished');
+
+        // Phase 2: Girls Crawler
+        crawlerState.girls.currentPhase = 'girls';
+        crawlerState.girls.progress = 50; // Start at 50% since categories is done
+        broadcastUpdate('phase-change', { type: 'girls', phase: 'girls' });
+
+        console.log('👥 Phase 2: Starting Girls Crawler...');
+        await runGirlsCrawlerSequential();
+
+        // Final completion
+        crawlerState.girls.isRunning = false;
+        crawlerState.girls.progress = 100;
+        crawlerState.girls.currentPhase = 'completed';
+        broadcastUpdate('complete', { type: 'girls' });
+
+        console.log('🎉 Sequential crawler completed successfully!');
+
+    } catch (error) {
+        console.error('Sequential crawler error:', error);
+        crawlerState.girls.isRunning = false;
+        crawlerState.categories.isRunning = false;
+        crawlerState.girls.logs.push({
+            timestamp: new Date(),
+            message: `Error: ${error.message}`
+        });
+        broadcastUpdate('error', { type: 'girls', error: error.message });
+    }
+}
+
+// Categories crawler for sequential execution
+async function runCategoriesCrawlerSequential() {
+    // Override console.log to capture logs for girls crawler display
+    const originalLog = console.log;
+    console.log = (...args) => {
+        const message = args.join(' ');
+
+        // Add to girls crawler logs with phase prefix
+        crawlerState.girls.logs.push({
+            timestamp: new Date(),
+            message: `[Categories] ${message}`
+        });
+
+        // Also update categories state for internal tracking
+        crawlerState.categories.logs.push({
+            timestamp: new Date(),
+            message: message
+        });
+
+        // Extract progress information and update girls progress (0-50%)
+        if (message.includes('Target:')) {
+            const match = message.match(/(\d+(?:,\d+)*)\s+girls/);
+            if (match) {
+                crawlerState.categories.totalGirlsExpected = parseInt(match[1].replace(/,/g, ''));
+            }
+        }
+
+        if (message.includes('📊 Progress:') && message.includes('girls in CSV')) {
+            const match = message.match(/📊 Progress: (\d+(?:,\d+)*)/);
+            if (match) {
+                const crawledGirls = parseInt(match[1].replace(/,/g, ''));
+                crawlerState.categories.crawledGirls = crawledGirls;
+
+                // Update girls progress (0-50% for categories phase)
+                if (crawlerState.categories.totalGirlsExpected > 0) {
+                    const categoriesProgress = Math.min(50, (crawledGirls / crawlerState.categories.totalGirlsExpected) * 50);
+                    crawlerState.girls.progress = categoriesProgress;
+                }
+            }
+        }
+
+        broadcastUpdate('log', { type: 'girls', message: `[Categories] ${message}` });
+        originalLog(...args);
+    };
+
+    try {
+        // Start the categories crawler
+        const result = await runCategoriesCrawlerForWeb();
+
+        // Restore console.log
+        console.log = originalLog;
+
+        crawlerState.categories.isRunning = false;
+        crawlerState.categories.crawledGirls = result.totalCrawled;
+
+        return result;
+
+    } catch (error) {
+        console.log = originalLog;
+        throw error;
+    }
+}
+
+// Girls crawler for sequential execution
+async function runGirlsCrawlerSequential() {
+    // Read list-girl.csv to get total count
+    const listGirlPath = path.join(__dirname, 'list-girl.csv');
+    const csvContent = fs.readFileSync(listGirlPath, 'utf8');
+    const lines = csvContent.trim().split('\n');
+    crawlerState.girls.totalProfiles = Math.max(0, lines.length - 1);
+    crawlerState.girls.processedProfiles = 0;
+
+    // Override console.log to capture logs
+    const originalLog = console.log;
+    console.log = (...args) => {
+        const message = args.join(' ');
+        crawlerState.girls.logs.push({
+            timestamp: new Date(),
+            message: `[Girls] ${message}`
+        });
+
+        broadcastUpdate('log', { type: 'girls', message: `[Girls] ${message}` });
+        originalLog(...args);
+    };
+
+    try {
+        // Import the girls crawler module
+        const crawlerGirlModule = require('./crawler-girl');
+        const { runGirlsCrawlerForWeb, initializeGlobalState } = crawlerGirlModule;
+
+        // Store the original updateGlobalProcessedProfiles function
+        const originalUpdateGlobalProcessedProfiles = crawlerGirlModule.updateGlobalProcessedProfiles;
+
+        // Override the updateGlobalProcessedProfiles function to map progress to 50-100%
+        crawlerGirlModule.updateGlobalProcessedProfiles = function(newProcessed) {
+            if (crawlerState && crawlerState.girls) {
+                crawlerState.girls.processedProfiles = newProcessed;
+
+                // Calculate raw progress (0-100%)
+                let rawProgress = 0;
+                if (crawlerState.girls.totalProfiles > 0) {
+                    const progressFloat = (newProcessed / crawlerState.girls.totalProfiles) * 100;
+                    rawProgress = Math.round(progressFloat);
+
+                    // Ensure progress reaches 100% when all processable profiles are completed
+                    if (newProcessed >= crawlerState.girls.totalProfiles || progressFloat >= 99.5) {
+                        rawProgress = 100;
+                    }
+                } else if (newProcessed > 0) {
+                    rawProgress = 100;
+                }
+
+                // Map raw progress (0-100%) to sequential progress (50-100%)
+                const mappedProgress = 50 + (rawProgress * 0.5);
+                crawlerState.girls.progress = Math.round(mappedProgress);
+
+                console.log(`📊 Sequential update: Processed Profiles = ${newProcessed}/${crawlerState.girls.totalProfiles} (${rawProgress}% → ${crawlerState.girls.progress}%)`);
+            }
+        };
+
+        // Initialize the crawler's global state reference for real-time updates
+        initializeGlobalState(crawlerState);
+
+        // Start the crawler using the web-compatible function
+        const result = await runGirlsCrawlerForWeb();
+
+        // Restore the original function
+        crawlerGirlModule.updateGlobalProcessedProfiles = originalUpdateGlobalProcessedProfiles;
+
+        // Restore console.log
+        console.log = originalLog;
+
+        return result;
+
+    } catch (error) {
+        // Restore the original function in case of error
+        if (typeof originalUpdateGlobalProcessedProfiles !== 'undefined') {
+            const crawlerGirlModule = require('./crawler-girl');
+            crawlerGirlModule.updateGlobalProcessedProfiles = originalUpdateGlobalProcessedProfiles;
+        }
+        console.log = originalLog;
+        throw error;
     }
 }
 

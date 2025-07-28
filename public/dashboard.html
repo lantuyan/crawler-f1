@@ -607,8 +607,8 @@
         <div class="controls-section">
             <h2 style="margin-bottom: 1.5rem;">Crawler Controls</h2>
             <div class="controls-grid">
-                <!-- Categories Crawler -->
-                <div class="crawler-control" id="categories-control">
+                <!-- Categories Crawler - Hidden -->
+                <div class="crawler-control" id="categories-control" style="display: none;">
                     <h3>📋 Categories Crawler</h3>
                     <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">
                         Crawls category pages to generate list-girl.csv with profile URLs
@@ -648,15 +648,24 @@
                 <div class="crawler-control" id="girls-control">
                     <h3>👥 Girls Crawler</h3>
                     <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">
-                        Processes URLs from list-girl.csv to extract detailed profile data
+                        Automatically runs categories crawler first, then processes URLs to extract detailed profile data
+                    </p>
+                    <p style="margin-bottom: 0.5rem; color: #2196F3; font-size: 0.85rem; font-weight: 500;">
+                        🔄 Phase 1: Categories crawler (updates list-girl.csv)
+                    </p>
+                    <p style="margin-bottom: 1rem; color: #2196F3; font-size: 0.85rem; font-weight: 500;">
+                        🔄 Phase 2: Girls crawler (extracts profile details)
                     </p>
                     <p style="margin-bottom: 1rem; color: #e74c3c; font-size: 0.85rem; font-weight: 500;">
-                        ⚠️ Will clear existing detail-girls.csv before starting
+                        ⚠️ Will clear existing CSV files before starting
                     </p>
                     <button class="crawler-btn girls" id="girls-btn" onclick="startGirlsCrawler()">
                         Run Crawl Girls
                     </button>
                     <div class="progress-container" id="girls-progress" style="display: none;">
+                        <div class="phase-indicator" id="girls-phase-indicator" style="margin-bottom: 0.5rem; font-size: 0.9rem; font-weight: 500; color: #2196F3;">
+                            🔄 Phase 1: Running Categories Crawler...
+                        </div>
                         <div class="progress-bar">
                             <div class="progress-fill" id="girls-progress-fill"></div>
                         </div>
@@ -749,6 +758,13 @@
             addLog(data.type, data.message);
         });
 
+        // Phase change updates for sequential crawler
+        socket.on('phase-change', (data) => {
+            if (data.type === 'girls') {
+                updatePhaseIndicator(data.phase);
+            }
+        });
+
         // Handle crawler stopped event
         socket.on('stopped', (data) => {
             if (data.type === 'categories') {
@@ -826,27 +842,30 @@
             if (state.girls.isRunning) {
                 girlsControl.classList.add('running');
                 girlsBtn.disabled = true;
-                girlsBtn.textContent = 'Running...';
+                girlsBtn.textContent = 'Running Sequential Crawl...';
                 girlsProgress.style.display = 'block';
 
+                // Update progress bar
                 document.getElementById('girls-progress-fill').style.width = state.girls.progress + '%';
-                document.getElementById('girls-progress-text').textContent = state.girls.progress + '%';
+                document.getElementById('girls-progress-text').textContent = Math.round(state.girls.progress) + '%';
+
+                // Update stats
                 document.getElementById('girls-total').textContent = state.girls.totalProfiles.toLocaleString();
                 document.getElementById('girls-processed').textContent = state.girls.processedProfiles.toLocaleString();
+
+                // Update phase indicator based on current phase
+                if (state.girls.currentPhase) {
+                    updatePhaseIndicator(state.girls.currentPhase);
+                }
             } else {
                 girlsControl.classList.remove('running');
+                girlsBtn.disabled = false;
+                girlsBtn.textContent = 'Run Crawl Girls';
 
-                // Disable girls button if categories crawler is running
-                if (state.categories.isRunning) {
-                    girlsBtn.disabled = true;
-                    girlsBtn.textContent = 'Categories Running...';
-                } else {
-                    girlsBtn.disabled = false;
-                    girlsBtn.textContent = 'Run Crawl Girls';
-                }
-
+                // Show progress if completed
                 if (state.girls.progress === 100) {
                     girlsProgress.style.display = 'block';
+                    updatePhaseIndicator('completed');
                 } else {
                     girlsProgress.style.display = 'none';
                 }
@@ -923,7 +942,31 @@
                 }
             }
         }
-        
+
+        // Update phase indicator for sequential crawler
+        function updatePhaseIndicator(phase) {
+            const phaseIndicator = document.getElementById('girls-phase-indicator');
+            if (!phaseIndicator) return;
+
+            switch (phase) {
+                case 'categories':
+                    phaseIndicator.textContent = '🔄 Phase 1: Running Categories Crawler...';
+                    phaseIndicator.style.color = '#2196F3';
+                    break;
+                case 'girls':
+                    phaseIndicator.textContent = '🔄 Phase 2: Running Girls Crawler...';
+                    phaseIndicator.style.color = '#4CAF50';
+                    break;
+                case 'completed':
+                    phaseIndicator.textContent = '✅ Completed: Both phases finished successfully';
+                    phaseIndicator.style.color = '#4CAF50';
+                    break;
+                default:
+                    phaseIndicator.textContent = '🔄 Initializing...';
+                    phaseIndicator.style.color = '#666';
+            }
+        }
+
         async function startGirlsCrawler() {
             try {
                 const response = await fetch('/api/start-girls-crawler', {
