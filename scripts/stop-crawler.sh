@@ -45,9 +45,15 @@ stop_pm2() {
 # Function to stop systemd service
 stop_systemd() {
     log "Stopping systemd service..."
-    
+
+    # Determine sudo command
+    local SUDO_CMD=""
+    if [[ $EUID -ne 0 ]]; then
+        SUDO_CMD="sudo"
+    fi
+
     if systemctl is-active --quiet fgirl-crawler; then
-        sudo systemctl stop fgirl-crawler
+        $SUDO_CMD systemctl stop fgirl-crawler
         log "Systemd service stopped"
     else
         warn "Systemd service is not running"

@@ -10,6 +10,8 @@ chmod +x scripts/install-linux.sh
 ./scripts/install-linux.sh
 ```
 
+**Note**: Can be run as root or regular user with sudo privileges.
+
 This script will automatically:
 - Install Node.js 18+
 - Install Google Chrome

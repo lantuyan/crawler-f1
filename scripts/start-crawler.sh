@@ -124,17 +124,23 @@ start_with_pm2() {
 
 start_with_systemd() {
     log "Starting application with systemd..."
-    
+
+    # Determine sudo command
+    local SUDO_CMD=""
+    if [[ $EUID -ne 0 ]]; then
+        SUDO_CMD="sudo"
+    fi
+
     if ! systemctl is-enabled fgirl-crawler &> /dev/null; then
         error "Systemd service is not enabled. Run the installation script first."
     fi
-    
-    sudo systemctl start fgirl-crawler
-    sudo systemctl status fgirl-crawler
-    
+
+    $SUDO_CMD systemctl start fgirl-crawler
+    $SUDO_CMD systemctl status fgirl-crawler
+
     log "Application started with systemd"
-    log "Use 'sudo systemctl status fgirl-crawler' to check status"
-    log "Use 'sudo systemctl stop fgirl-crawler' to stop"
+    log "Use '$SUDO_CMD systemctl status fgirl-crawler' to check status"
+    log "Use '$SUDO_CMD systemctl stop fgirl-crawler' to stop"
 }
 
 # Parse command line arguments

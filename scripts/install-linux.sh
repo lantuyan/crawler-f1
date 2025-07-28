@@ -26,27 +26,29 @@ error() {
     exit 1
 }
 
-# Check if running as root
+# Check if running as root and handle accordingly
 if [[ $EUID -eq 0 ]]; then
-   error "This script should not be run as root. Please run as a regular user with sudo privileges."
-fi
-
-# Check if sudo is available
-if ! command -v sudo &> /dev/null; then
-    error "sudo is required but not installed. Please install sudo first."
+    warn "Running as root. Will install system packages directly."
+    SUDO_CMD=""
+else
+    # Check if sudo is available
+    if ! command -v sudo &> /dev/null; then
+        error "sudo is required but not installed. Please install sudo first or run as root."
+    fi
+    SUDO_CMD="sudo"
 fi
 
 log "Starting Fgirl Crawler Linux installation..."
 
 # Update system packages
 log "Updating system packages..."
-sudo apt update && sudo apt upgrade -y
+$SUDO_CMD apt update && $SUDO_CMD apt upgrade -y
 
 # Install Node.js
 log "Installing Node.js..."
 if ! command -v node &> /dev/null; then
-    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_18.x | $SUDO_CMD -E bash -
+    $SUDO_CMD apt-get install -y nodejs
     log "Node.js installed successfully"
 else
     log "Node.js is already installed: $(node --version)"
@@ -55,10 +57,10 @@ fi
 # Install Google Chrome
 log "Installing Google Chrome..."
 if ! command -v google-chrome-stable &> /dev/null; then
-    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-    sudo apt update
-    sudo apt install -y google-chrome-stable
+    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | $SUDO_CMD apt-key add -
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | $SUDO_CMD tee /etc/apt/sources.list.d/google-chrome.list
+    $SUDO_CMD apt update
+    $SUDO_CMD apt install -y google-chrome-stable
     log "Google Chrome installed successfully"
 else
     log "Google Chrome is already installed: $(google-chrome-stable --version)"
@@ -66,7 +68,7 @@ fi
 
 # Install system dependencies
 log "Installing system dependencies..."
-sudo apt install -y \
+$SUDO_CMD apt install -y \
     build-essential \
     libgtk-3-dev \
     libnotify-dev \
@@ -134,7 +136,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     CURRENT_DIR=$(pwd)
     
     # Create service file
-    sudo tee /etc/systemd/system/fgirl-crawler.service > /dev/null <<EOF
+    $SUDO_CMD tee /etc/systemd/system/fgirl-crawler.service > /dev/null <<EOF
 [Unit]
 Description=Fgirl Crawler Web Application
 After=network.target
@@ -155,12 +157,12 @@ WantedBy=multi-user.target
 EOF
 
     # Reload systemd and enable service
-    sudo systemctl daemon-reload
-    sudo systemctl enable fgirl-crawler
-    
+    $SUDO_CMD systemctl daemon-reload
+    $SUDO_CMD systemctl enable fgirl-crawler
+
     log "Systemd service created and enabled"
-    log "You can start it with: sudo systemctl start fgirl-crawler"
-    log "Check status with: sudo systemctl status fgirl-crawler"
+    log "You can start it with: $SUDO_CMD systemctl start fgirl-crawler"
+    log "Check status with: $SUDO_CMD systemctl status fgirl-crawler"
 fi
 
 # Install PM2 (optional)
@@ -168,7 +170,7 @@ read -p "Do you want to install PM2 for process management? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     log "Installing PM2..."
-    sudo npm install -g pm2
+    $SUDO_CMD npm install -g pm2
     log "PM2 installed successfully"
     log "You can start the app with: pm2 start server.js --name fgirl-crawler"
 fi
@@ -178,7 +180,7 @@ log ""
 log "Next steps:"
 log "1. Review and update the .env file with your configuration"
 log "2. Test the application: node server.js"
-log "3. Start the service: sudo systemctl start fgirl-crawler (if created)"
+log "3. Start the service: $SUDO_CMD systemctl start fgirl-crawler (if created)"
 log "4. Check the application at: http://your-server-ip:3000"
 log ""
 log "For troubleshooting, check the logs:"
