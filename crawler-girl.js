@@ -336,13 +336,38 @@ let csvWriteLock = false; // Thread-safe CSV writing lock
 async function initBrowser() {
     console.log('Initializing browser with proxy...');
 
-    // Check for Chrome executable paths on macOS
-    const chromePaths = [
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium-browser'
-    ];
+    // Check for Chrome executable paths (Linux and macOS)
+    const os = require('os');
+    const platform = os.platform();
+
+    let chromePaths = [];
+
+    if (platform === 'linux') {
+        chromePaths = [
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium',
+            '/snap/bin/chromium',
+            '/usr/bin/google-chrome-unstable',
+            '/usr/bin/google-chrome-beta'
+        ];
+    } else if (platform === 'darwin') {
+        chromePaths = [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser'
+        ];
+    } else {
+        // Windows or other platforms
+        chromePaths = [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser'
+        ];
+    }
 
     let executablePath = null;
     for (const path of chromePaths) {
@@ -361,7 +386,9 @@ async function initBrowser() {
         console.log('No Chrome executable found in standard locations, using Puppeteer bundled Chromium');
     }
 
-    // Enhanced browser configurations with anti-detection measures
+    // Enhanced browser configurations with anti-detection measures and Linux optimization
+    const isLinux = platform === 'linux';
+
     const configurations = [
         {
             name: 'enhanced-proxy',
@@ -372,6 +399,7 @@ async function initBrowser() {
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
+                    '--disable-software-rasterizer',
                     '--disable-images',
                     '--disable-plugins',
                     '--disable-extensions',
@@ -393,9 +421,15 @@ async function initBrowser() {
                     '--disable-sync',
                     '--disable-web-security',
                     '--disable-features=site-per-process',
-                    '--window-size=1366,768'
+                    '--window-size=1366,768',
+                    ...(isLinux ? [
+                        '--disable-background-networking',
+                        '--disable-client-side-phishing-detection',
+                        '--disable-component-extensions-with-background-pages',
+                        '--disable-domain-reliability'
+                    ] : [])
                 ],
-                timeout: 15000
+                timeout: 20000
             }
         },
         {
