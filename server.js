@@ -147,7 +147,7 @@ function requireAuth(req, res, next) {
 // Routes
 app.get('/', (req, res) => {
     if (req.session && req.session.user) {
-        res.redirect('/dashboard');
+        res.redirect('/website-selection');
     } else {
         res.redirect('/login');
     }
@@ -155,7 +155,7 @@ app.get('/', (req, res) => {
 
 app.get('/login', (req, res) => {
     if (req.session && req.session.user) {
-        return res.redirect('/dashboard');
+        return res.redirect('/website-selection');
     }
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
@@ -176,7 +176,7 @@ app.post('/login', async (req, res) => {
         const isValid = await bcrypt.compare(password, user.password);
         if (isValid) {
             req.session.user = { username: user.username };
-            res.json({ success: true, redirect: '/dashboard' });
+            res.json({ success: true, redirect: '/website-selection' });
         } else {
             res.status(401).json({ error: 'Invalid credentials' });
         }
@@ -184,6 +184,10 @@ app.post('/login', async (req, res) => {
         console.error('Login error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+app.get('/website-selection', requireAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'website-selection.html'));
 });
 
 app.get('/logout', (req, res) => {

@@ -18,15 +18,56 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            animation: gradientShift 10s ease infinite;
+            background-size: 400% 400%;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
 
         .login-container {
-            background: white;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.15);
             width: 100%;
-            max-width: 400px;
+            max-width: 450px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: slideUp 0.8s ease-out;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2, #f093fb, #f5576c);
+            background-size: 400% 100%;
+            animation: shimmer 3s ease-in-out infinite;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes shimmer {
+            0%, 100% { background-position: 0% 0%; }
+            50% { background-position: 100% 0%; }
         }
 
         .login-header {
@@ -37,6 +78,12 @@
         .login-header h1 {
             color: #333;
             margin-bottom: 0.5rem;
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .login-header p {
@@ -67,6 +114,8 @@
         .form-group input:focus {
             outline: none;
             border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            transform: translateY(-1px);
         }
 
         .login-btn {
@@ -83,7 +132,8 @@
         }
 
         .login-btn:hover {
-            transform: translateY(-2px);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
         }
 
         .login-btn:disabled {
@@ -134,11 +184,13 @@
         }
 
         .demo-info {
-            background: #f8f9fa;
-            padding: 1rem;
-            border-radius: 5px;
-            margin-top: 1.5rem;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 1.5rem;
+            border-radius: 15px;
+            margin-top: 2rem;
             border-left: 4px solid #17a2b8;
+            border: 1px solid rgba(23, 162, 184, 0.2);
+            backdrop-filter: blur(10px);
         }
 
         .demo-info h3 {
@@ -227,7 +279,7 @@
                     successMessage.style.display = 'block';
                     
                     setTimeout(() => {
-                        window.location.href = data.redirect || '/dashboard';
+                        window.location.href = data.redirect || '/website-selection';
                     }, 1000);
                 } else {
                     throw new Error(data.error || 'Login failed');
