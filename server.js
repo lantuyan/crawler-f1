@@ -838,17 +838,19 @@ async function startGirlsCrawler() {
                 message: message
             });
 
-            // Extract progress information from logs - only count successfully saved profiles
-            if (message.includes('Valid profile data saved:')) {
-                crawlerState.girls.processedProfiles++;
-                if (crawlerState.girls.totalProfiles > 0) {
-                    crawlerState.girls.progress = Math.round((crawlerState.girls.processedProfiles / crawlerState.girls.totalProfiles) * 100);
-                }
-            }
+            // Note: Progress tracking is now handled by the crawler's real-time state management
+            // The crawler will update crawlerState.girls.processedProfiles and progress directly
+            // No need to extract from logs anymore since we have real-time updates
 
             broadcastUpdate('log', { type: 'girls', message });
             originalLog(...args);
         };
+
+        // Import the girls crawler and initialize global state
+        const { runGirlsCrawlerForWeb, initializeGlobalState } = require('./crawler-girl');
+
+        // Initialize the crawler's global state reference for real-time updates
+        initializeGlobalState(crawlerState);
 
         // Start the crawler using the web-compatible function
         const result = await runGirlsCrawlerForWeb();
