@@ -12,7 +12,7 @@ This feature ensures that the stored CSV file contains an up-to-date, deduplicat
 
 ### Automatic Synchronization
 
-The synchronization automatically triggers after the "crawl categories" operation completes successfully. The process includes:
+The synchronization automatically triggers during the sequential crawler workflow, specifically between Phase 1 (Categories Crawler) and Phase 2 (Girls Crawler). This ensures that the CSV data is properly prepared before the girls crawler begins processing. The process includes:
 
 1. **Duplicate Detection and Removal**
    - Compares records in `list-girl.csv` against `list-girl-stored.csv` using Profile URL as unique identifier
