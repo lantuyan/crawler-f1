@@ -105,8 +105,9 @@ if [ ! -f ".env" ]; then
     cat > .env << EOF
 NODE_ENV=production
 PORT=3000
-PROXY_URL=http://proxybird:proxybird@155.254.39.107:6065
 CHROME_PATH=/usr/bin/google-chrome-stable
+# Proxy functionality disabled for production server environment
+# PROXY_URL=
 EOF
     log "Environment file created: .env"
 else

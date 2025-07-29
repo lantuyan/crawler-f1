@@ -69,11 +69,12 @@ function findChromeExecutable() {
 
 /**
  * Get platform-specific browser arguments
+ * Proxy functionality disabled for production server environment
  */
-function getBrowserArgs(useProxy = false) {
+function getBrowserArgs() {
     const platform = os.platform();
     const isLinux = platform === 'linux';
-    
+
     const baseArgs = [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -81,7 +82,7 @@ function getBrowserArgs(useProxy = false) {
         '--disable-gpu',
         '--disable-software-rasterizer'
     ];
-    
+
     const linuxArgs = [
         '--disable-extensions',
         '--disable-plugins',
@@ -95,22 +96,17 @@ function getBrowserArgs(useProxy = false) {
         '--disable-features=TranslateUI',
         '--disable-ipc-flooding-protection'
     ];
-    
-    const proxyArgs = useProxy && process.env.PROXY_URL ? [
-        `--proxy-server=${process.env.PROXY_URL.replace(/^https?:\/\/[^@]+@/, '')}`
-    ] : [];
-    
+
     const args = [
         ...baseArgs,
-        ...(isLinux ? linuxArgs : []),
-        ...proxyArgs
+        ...(isLinux ? linuxArgs : [])
     ];
-    
+
     // Add single process mode for Linux VPS if enabled
     if (isLinux && process.env.CHROME_SINGLE_PROCESS === 'true') {
         args.push('--single-process');
     }
-    
+
     return args;
 }
 
@@ -135,12 +131,12 @@ const config = {
         timeout: parseInt(process.env.REQUEST_TIMEOUT) || 30000
     },
     
-    // Proxy settings
+    // Proxy settings - DISABLED FOR PRODUCTION
     proxy: {
-        url: process.env.PROXY_URL || '',
-        username: process.env.PROXY_USERNAME || 'proxybird',
-        password: process.env.PROXY_PASSWORD || 'proxybird',
-        enabled: !!process.env.PROXY_URL
+        url: '',
+        username: '',
+        password: '',
+        enabled: false
     },
     
     // Crawler settings
@@ -218,25 +214,26 @@ const config = {
 
 /**
  * Get browser configuration for Puppeteer
+ * Proxy functionality disabled for production server environment
  */
-config.getBrowserConfig = function(useProxy = false) {
-    const args = getBrowserArgs(useProxy);
-    
+config.getBrowserConfig = function() {
+    const args = getBrowserArgs();
+
     const browserConfig = {
         headless: this.browser.headless,
         args: args,
         timeout: this.browser.timeout
     };
-    
+
     if (this.browser.executablePath) {
         browserConfig.executablePath = this.browser.executablePath;
     }
-    
+
     if (this.development.browserDebug) {
         browserConfig.devtools = true;
         browserConfig.args.push(`--remote-debugging-port=${this.development.browserDebugPort}`);
     }
-    
+
     return browserConfig;
 };
 

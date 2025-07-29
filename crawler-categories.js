@@ -1,10 +1,8 @@
 const puppeteer = require('puppeteer');
 const cheerio = require('cheerio');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-const { HttpsProxyAgent } = require('https-proxy-agent');
 
-// Configuration
-const PROXY_URL = 'http://proxybird:proxybird@155.254.39.107:6065';
+// Configuration - Proxy functionality disabled for production
 const START_URL = 'https://www.en.fgirl.ch/filles/?page=1';
 const OUTPUT_FILE = 'list-girl.csv';
 const DELAY_BETWEEN_REQUESTS = 100; // 100ms delay for speed
@@ -125,10 +123,11 @@ class FgirlCategoryCrawler {
         }
         
         // Optimized browser configurations for speed and Linux VPS compatibility
+        // Proxy functionality disabled for production server environment
         const isLinux = platform === 'linux';
         const configurations = [
             {
-                name: 'fast-proxy',
+                name: 'fast-optimized',
                 config: {
                     headless: "new",
                     args: [
@@ -148,7 +147,6 @@ class FgirlCategoryCrawler {
                         '--disable-background-timer-throttling',
                         '--disable-backgrounding-occluded-windows',
                         '--disable-renderer-backgrounding',
-                        '--proxy-server=155.254.39.107:6065',
                         ...(isLinux ? [
                             '--disable-features=TranslateUI',
                             '--disable-ipc-flooding-protection',
@@ -159,7 +157,7 @@ class FgirlCategoryCrawler {
                 }
             },
             {
-                name: 'fast-no-proxy',
+                name: 'standard',
                 config: {
                     headless: "new",
                     args: [
@@ -185,7 +183,7 @@ class FgirlCategoryCrawler {
                 }
             },
             {
-                name: 'linux-minimal',
+                name: 'minimal',
                 config: {
                     headless: "new",
                     args: [
@@ -213,7 +211,6 @@ class FgirlCategoryCrawler {
                 
                 this.browser = await puppeteer.launch(launchConfig);
                 browserLaunched = true;
-                this.useProxy = name.includes('proxy');
                 console.log(`Browser launched successfully with: ${name}`);
                 break;
             } catch (error) {
@@ -225,7 +222,6 @@ class FgirlCategoryCrawler {
                         console.log(`Retrying ${name} without custom executable path...`);
                         this.browser = await puppeteer.launch(config);
                         browserLaunched = true;
-                        this.useProxy = name.includes('proxy');
                         console.log(`Browser launched successfully with: ${name} (bundled Chromium)`);
                         break;
                     } catch (retryError) {
@@ -250,17 +246,9 @@ class FgirlCategoryCrawler {
         
         // Set viewport
         await this.page.setViewport({ width: 1366, height: 768 });
-        
-        // Set proxy authentication only if using proxy
-        if (this.useProxy) {
-            await this.page.authenticate({
-                username: 'proxybird',
-                password: 'proxybird'
-            });
-            console.log('Proxy authentication set');
-        } else {
-            console.log('Running without proxy - direct connection');
-        }
+
+        // Running without proxy - direct connection for production
+        console.log('Running without proxy - direct connection');
         
         // Set user agent to avoid detection
         await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -451,14 +439,6 @@ class FgirlCategoryCrawler {
                     
                     // Set viewport
                     await this.page.setViewport({ width: 1366, height: 768 });
-                    
-                    // Set proxy authentication only if using proxy
-                    if (this.useProxy) {
-                        await this.page.authenticate({
-                            username: 'proxybird',
-                            password: 'proxybird'
-                        });
-                    }
                     
                     // Set user agent
                     await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');

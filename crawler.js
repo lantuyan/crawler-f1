@@ -1,10 +1,8 @@
 const puppeteer = require('puppeteer');
 const cheerio = require('cheerio');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-const { HttpsProxyAgent } = require('https-proxy-agent');
 
-// Configuration
-const PROXY_URL = 'http://proxybird:proxybird@155.254.39.107:6065';
+// Configuration - Proxy functionality disabled for production
 const START_URL = 'https://www.en.fgirl.ch/filles/jolie-3/';
 const OUTPUT_FILE = 'data-gaidep.csv';
 const DELAY_BETWEEN_REQUESTS = 2000; // 2 seconds delay
@@ -42,7 +40,6 @@ class FgirlCrawler {
         this.page = null;
         this.crawledData = [];
         this.visitedUrls = new Set();
-        this.useProxy = true; // Track if we're using proxy
         this.csvHeaderWritten = false; // Track if CSV header is written
     }
 
@@ -100,11 +97,11 @@ class FgirlCrawler {
             console.log('No Chrome executable found in standard locations, using Puppeteer bundled Chromium');
         }
         
-        // Try different browser configurations optimized for Linux VPS
+        // Browser configurations optimized for Linux VPS - Proxy functionality disabled for production
         const isLinux = platform === 'linux';
         const configurations = [
             {
-                name: 'with-proxy-full',
+                name: 'optimized-full',
                 config: {
                     headless: "new",
                     args: [
@@ -121,7 +118,6 @@ class FgirlCrawler {
                         '--disable-renderer-backgrounding',
                         '--disable-features=TranslateUI',
                         '--disable-ipc-flooding-protection',
-                        '--proxy-server=155.254.39.107:6065',
                         '--ignore-certificate-errors',
                         '--ignore-ssl-errors',
                         '--ignore-certificate-errors-spki-list',
@@ -141,7 +137,7 @@ class FgirlCrawler {
                 }
             },
             {
-                name: 'with-proxy-minimal',
+                name: 'minimal',
                 config: {
                     headless: "new",
                     args: [
@@ -149,14 +145,13 @@ class FgirlCrawler {
                         '--disable-setuid-sandbox',
                         '--disable-dev-shm-usage',
                         '--disable-gpu',
-                        '--proxy-server=155.254.39.107:6065',
                         ...(isLinux ? ['--disable-extensions', '--disable-plugins'] : [])
                     ],
                     timeout: 15000
                 }
             },
             {
-                name: 'without-proxy-standard',
+                name: 'standard',
                 config: {
                     headless: "new",
                     args: [
@@ -176,7 +171,7 @@ class FgirlCrawler {
                 }
             },
             {
-                name: 'without-proxy-minimal',
+                name: 'basic',
                 config: {
                     headless: "new",
                     args: [
@@ -188,7 +183,7 @@ class FgirlCrawler {
                 }
             },
             {
-                name: 'old-headless-mode',
+                name: 'legacy',
                 config: {
                     headless: true,
                     args: [
@@ -215,7 +210,6 @@ class FgirlCrawler {
                 
                 this.browser = await puppeteer.launch(launchConfig);
                 browserLaunched = true;
-                this.useProxy = name.includes('proxy');
                 console.log(`Browser launched successfully with: ${name}`);
                 break;
             } catch (error) {
@@ -227,7 +221,6 @@ class FgirlCrawler {
                         console.log(`Retrying ${name} without custom executable path...`);
                         this.browser = await puppeteer.launch(config);
                         browserLaunched = true;
-                        this.useProxy = name.includes('proxy');
                         console.log(`Browser launched successfully with: ${name} (bundled Chromium)`);
                         break;
                     } catch (retryError) {
@@ -252,17 +245,9 @@ class FgirlCrawler {
         
         // Set viewport
         await this.page.setViewport({ width: 1366, height: 768 });
-        
-        // Set proxy authentication only if using proxy
-        if (this.useProxy) {
-            await this.page.authenticate({
-                username: 'proxybird',
-                password: 'proxybird'
-            });
-            console.log('Proxy authentication set');
-        } else {
-            console.log('Running without proxy - direct connection');
-        }
+
+        // Running without proxy - direct connection for production
+        console.log('Running without proxy - direct connection');
         
         // Set user agent to avoid detection
         await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -345,14 +330,6 @@ class FgirlCrawler {
                     
                     // Set viewport
                     await this.page.setViewport({ width: 1366, height: 768 });
-                    
-                    // Set proxy authentication only if using proxy
-                    if (this.useProxy) {
-                        await this.page.authenticate({
-                            username: 'proxybird',
-                            password: 'proxybird'
-                        });
-                    }
                     
                     // Set user agent
                     await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');

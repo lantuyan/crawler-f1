@@ -363,8 +363,7 @@ function checkCrawlingCompletion(totalUrlsProcessed, originalTotalUrls) {
 
 // ===== CONFIGURATION =====
 
-// Basic crawler configuration
-const PROXY_URL = 'http://proxybird:proxybird@155.254.39.107:6065';
+// Basic crawler configuration - Proxy functionality disabled for production
 const DELAY_BETWEEN_REQUESTS = 100; // 100ms delay between requests
 const MAX_CONCURRENT_THREADS = 10; // Number of concurrent browser instances
 const OUTPUT_FILE = 'detail-girls.csv';
@@ -501,11 +500,12 @@ async function initBrowser() {
     }
 
     // Enhanced browser configurations with anti-detection measures and Linux optimization
+    // Proxy functionality disabled for production server environment
     const isLinux = platform === 'linux';
 
     const configurations = [
         {
-            name: 'enhanced-proxy',
+            name: 'enhanced-optimized',
             config: {
                 headless: "new",
                 args: [
@@ -517,7 +517,6 @@ async function initBrowser() {
                     '--disable-images',
                     '--disable-plugins',
                     '--disable-extensions',
-                    '--proxy-server=155.254.39.107:6065',
                     // Anti-detection arguments
                     '--disable-blink-features=AutomationControlled',
                     '--disable-features=VizDisplayCompositor',
@@ -547,7 +546,7 @@ async function initBrowser() {
             }
         },
         {
-            name: 'enhanced-no-proxy',
+            name: 'standard',
             config: {
                 headless: "new",
                 args: [
@@ -558,7 +557,7 @@ async function initBrowser() {
                     '--disable-images',
                     '--disable-plugins',
                     '--disable-extensions',
-                    // Anti-detection arguments (same as proxy version)
+                    // Anti-detection arguments
                     '--disable-blink-features=AutomationControlled',
                     '--disable-features=VizDisplayCompositor',
                     '--disable-background-timer-throttling',
@@ -583,7 +582,6 @@ async function initBrowser() {
     ];
 
     let browser = null;
-    let useProxy = false;
 
     for (const { name, config } of configurations) {
         try {
@@ -596,7 +594,6 @@ async function initBrowser() {
             }
 
             browser = await puppeteer.launch(launchConfig);
-            useProxy = name.includes('proxy');
             console.log(`Browser launched successfully with: ${name}`);
             break;
         } catch (error) {
@@ -607,7 +604,6 @@ async function initBrowser() {
                 try {
                     console.log(`Retrying ${name} without custom executable path...`);
                     browser = await puppeteer.launch(config);
-                    useProxy = name.includes('proxy');
                     console.log(`Browser launched successfully with: ${name} (bundled Chromium)`);
                     break;
                 } catch (retryError) {
@@ -628,7 +624,7 @@ async function initBrowser() {
         throw new Error('Failed to launch browser with any configuration');
     }
 
-    return { browser, useProxy };
+    return { browser };
 }
 
 // Function to read URLs from CSV
@@ -1769,24 +1765,16 @@ async function crawlProfiles() {
     const testUrls = urls;
     console.log(`Processing all ${testUrls.length} URLs`);
 
-    // Initialize browser with proxy support
-    const { browser, useProxy } = await initBrowser();
+    // Initialize browser for production (no proxy)
+    const { browser } = await initBrowser();
 
     const page = await browser.newPage();
 
     // Set viewport
     await page.setViewport({ width: 1366, height: 768 });
 
-    // Set proxy authentication only if using proxy
-    if (useProxy) {
-        await page.authenticate({
-            username: 'proxybird',
-            password: 'proxybird'
-        });
-        console.log('Proxy authentication set');
-    } else {
-        console.log('Running without proxy - direct connection');
-    }
+    // Running without proxy - direct connection for production
+    console.log('Running without proxy - direct connection');
 
     // Set user agent and headers to avoid detection
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -1995,21 +1983,13 @@ async function crawlBatch(urls, threadId) {
 
     try {
         // Initialize browser for this thread
-        const { browser: threadBrowser, useProxy } = await initBrowser();
+        const { browser: threadBrowser } = await initBrowser();
         browser = threadBrowser;
 
         const page = await browser.newPage();
 
         // Set viewport
         await page.setViewport({ width: 1366, height: 768 });
-
-        // Set proxy authentication only if using proxy
-        if (useProxy) {
-            await page.authenticate({
-                username: 'proxybird',
-                password: 'proxybird'
-            });
-        }
 
         // Set user agent and headers to avoid detection
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
