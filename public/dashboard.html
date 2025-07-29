@@ -314,6 +314,170 @@
             letter-spacing: 0.5px;
         }
 
+        /* Loading Overlay Styles */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .loading-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .loading-content {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 3rem;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #e1e5e9;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1.5rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        .loading-subtitle {
+            font-size: 1rem;
+            color: #666;
+            margin-bottom: 1.5rem;
+        }
+
+        .loading-phase {
+            font-size: 0.9rem;
+            color: #667eea;
+            font-weight: 500;
+            margin-bottom: 1rem;
+        }
+
+        .loading-progress {
+            width: 100%;
+            height: 8px;
+            background: #e1e5e9;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .loading-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+
+        .loading-progress-text {
+            font-size: 0.85rem;
+            color: #666;
+            font-weight: 500;
+        }
+
+        /* Success Notification Styles */
+        .success-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(40, 167, 69, 0.3);
+            z-index: 10000;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s ease;
+            max-width: 350px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .success-notification.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .success-notification-content {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .success-notification-icon {
+            font-size: 1.5rem;
+            animation: successPulse 0.6s ease;
+        }
+
+        @keyframes successPulse {
+            0% { transform: scale(0.8); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        .success-notification-text {
+            flex: 1;
+        }
+
+        .success-notification-title {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .success-notification-subtitle {
+            font-size: 0.85rem;
+            opacity: 0.9;
+        }
+
+        .success-notification-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+            padding: 0;
+            margin-left: 0.5rem;
+        }
+
+        .success-notification-close:hover {
+            opacity: 1;
+        }
+
 
 
         .status-indicator {
@@ -736,6 +900,32 @@
         </div>
     </div>
 
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <div class="loading-title">Crawling in Progress</div>
+            <div class="loading-subtitle">Please wait while we process the data...</div>
+            <div class="loading-phase" id="loading-phase">🔄 Phase 1: Running Categories Crawler...</div>
+            <div class="loading-progress">
+                <div class="loading-progress-fill" id="loading-progress-fill"></div>
+            </div>
+            <div class="loading-progress-text" id="loading-progress-text">0%</div>
+        </div>
+    </div>
+
+    <!-- Success Notification -->
+    <div class="success-notification" id="success-notification">
+        <div class="success-notification-content">
+            <div class="success-notification-icon">🎉</div>
+            <div class="success-notification-text">
+                <div class="success-notification-title">Crawl Completed!</div>
+                <div class="success-notification-subtitle">All data has been successfully processed</div>
+            </div>
+            <button class="success-notification-close" onclick="hideSuccessNotification()">×</button>
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         // Initialize Socket.io connection with reconnection settings
@@ -796,6 +986,8 @@
         socket.on('phase-change', (data) => {
             if (data.type === 'girls') {
                 updatePhaseIndicator(data.phase);
+                // Update loading overlay phase
+                updateLoadingProgress(null, data.phase);
             }
         });
 
@@ -824,6 +1016,9 @@
                 addLog('System', 'Categories crawler stopped successfully');
             } else if (data.type === 'girls') {
                 addLog('System', 'Girls crawler stopped');
+                // Hide loading overlay and stop polling when girls crawler is stopped
+                hideLoadingOverlay();
+                stopCrawlerStatusPolling();
             }
         });
 
@@ -831,6 +1026,8 @@
         socket.on('complete', (data) => {
             if (data.type === 'girls') {
                 addLog('System', 'Sequential crawler completed successfully!');
+                // Note: Success notification is now handled by HTTP polling
+                // Loading overlay will be hidden by the polling mechanism
             } else if (data.type === 'categories') {
                 addLog('System', 'Categories crawler completed successfully!');
             }
@@ -840,6 +1037,9 @@
         socket.on('error', (data) => {
             if (data.type === 'girls') {
                 addLog('Error', `Girls crawler error: ${data.error || 'Unknown error'}`);
+                // Hide loading overlay and stop polling on error
+                hideLoadingOverlay();
+                stopCrawlerStatusPolling();
             } else if (data.type === 'categories') {
                 addLog('Error', `Categories crawler error: ${data.error || 'Unknown error'}`);
             }
@@ -902,6 +1102,9 @@
                 // Update progress bar
                 document.getElementById('girls-progress-fill').style.width = state.girls.progress + '%';
                 document.getElementById('girls-progress-text').textContent = Math.round(state.girls.progress) + '%';
+
+                // Update loading overlay progress
+                updateLoadingProgress(state.girls.progress, state.girls.currentPhase);
 
                 // Update stats
                 document.getElementById('girls-total').textContent = state.girls.totalProfiles.toLocaleString();
@@ -1027,6 +1230,9 @@
 
         async function startGirlsCrawler() {
             try {
+                // Show loading overlay
+                showLoadingOverlay();
+
                 const response = await fetch('/api/start-girls-crawler', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
@@ -1038,11 +1244,211 @@
                 }
 
                 addLog('System', 'Girls crawler started successfully');
+
+                // Start polling for completion status
+                startCrawlerStatusPolling();
+
             } catch (error) {
+                // Hide loading overlay on error
+                hideLoadingOverlay();
                 addLog('System', 'Error starting girls crawler: ' + error.message);
                 alert('Error starting girls crawler: ' + error.message);
             }
         }
+
+        // Loading overlay management functions
+        function showLoadingOverlay() {
+            const overlay = document.getElementById('loading-overlay');
+            const phase = document.getElementById('loading-phase');
+            const progressFill = document.getElementById('loading-progress-fill');
+            const progressText = document.getElementById('loading-progress-text');
+
+            // Reset to initial state
+            phase.textContent = '🔄 Phase 1: Running Categories Crawler...';
+            progressFill.style.width = '0%';
+            progressText.textContent = '0%';
+
+            overlay.classList.add('show');
+        }
+
+        function hideLoadingOverlay() {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.classList.remove('show');
+        }
+
+        function updateLoadingProgress(progress, phase) {
+            const phaseElement = document.getElementById('loading-phase');
+            const progressFill = document.getElementById('loading-progress-fill');
+            const progressText = document.getElementById('loading-progress-text');
+
+            if (phase) {
+                if (phase === 'categories') {
+                    phaseElement.textContent = '🔄 Phase 1: Running Categories Crawler...';
+                } else if (phase === 'girls') {
+                    phaseElement.textContent = '👥 Phase 2: Running Girls Crawler...';
+                }
+            }
+
+            progressFill.style.width = progress + '%';
+            progressText.textContent = Math.round(progress) + '%';
+        }
+
+        function showSuccessNotification() {
+            const notification = document.getElementById('success-notification');
+            notification.classList.add('show');
+
+            // Auto-hide after 5 seconds
+            // setTimeout(() => {
+            //     hideSuccessNotification();
+            // }, 5000);
+        }
+
+        function hideSuccessNotification() {
+            const notification = document.getElementById('success-notification');
+            notification.classList.remove('show');
+        }
+
+        // HTTP Polling for crawler completion status
+        let pollingInterval = null;
+        let lastKnownState = null;
+        let pollingStartTime = null;
+
+        function startCrawlerStatusPolling() {
+            // Clear any existing polling interval
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+
+            // Reset last known state and start time
+            lastKnownState = null;
+            pollingStartTime = Date.now();
+
+            console.log('🔄 Starting HTTP polling for crawler completion status');
+            addLog('System', 'Started monitoring crawler status via HTTP polling');
+
+            // Start polling every 2 seconds
+            pollingInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/api/crawler-state');
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const currentState = await response.json();
+
+                    // Debug logging (only log state changes to avoid spam)
+                    if (!lastKnownState ||
+                        lastKnownState.girls.isRunning !== currentState.girls.isRunning ||
+                        lastKnownState.girls.currentPhase !== currentState.girls.currentPhase ||
+                        Math.abs(lastKnownState.girls.progress - currentState.girls.progress) >= 5) {
+
+                        console.log('📊 Polling update:', {
+                            isRunning: currentState.girls.isRunning,
+                            phase: currentState.girls.currentPhase,
+                            progress: currentState.girls.progress
+                        });
+                    }
+
+                    // Check if girls crawler just completed
+                    if (lastKnownState &&
+                        lastKnownState.girls.isRunning &&
+                        !currentState.girls.isRunning &&
+                        currentState.girls.currentPhase === 'completed' &&
+                        currentState.girls.progress === 100) {
+
+                        // Crawler completed successfully
+                        console.log('✅ Crawler completion detected via HTTP polling');
+                        hideLoadingOverlay();
+                        showSuccessNotification();
+                        stopCrawlerStatusPolling();
+
+                        const duration = Math.round((Date.now() - pollingStartTime) / 1000);
+                        addLog('System', `Sequential crawler completed successfully! (detected via HTTP polling after ${duration}s)`);
+                    }
+
+                    // Check if crawler was stopped or errored
+                    else if (lastKnownState &&
+                        lastKnownState.girls.isRunning &&
+                        !currentState.girls.isRunning &&
+                        currentState.girls.currentPhase !== 'completed') {
+
+                        // Crawler was stopped or errored
+                        console.log('⚠️ Crawler stop/error detected via HTTP polling');
+                        hideLoadingOverlay();
+                        stopCrawlerStatusPolling();
+
+                        const duration = Math.round((Date.now() - pollingStartTime) / 1000);
+                        addLog('System', `Crawler stopped or encountered an error (detected via HTTP polling after ${duration}s)`);
+                    }
+
+                    // Update last known state
+                    lastKnownState = JSON.parse(JSON.stringify(currentState));
+
+                } catch (error) {
+                    console.error('❌ Error polling crawler status:', error);
+                    addLog('System', `Polling error: ${error.message}`);
+                    // Continue polling even if there's an error, but limit retries
+                }
+            }, 2000); // Poll every 2 seconds
+
+            // Set a maximum polling duration (30 minutes) to prevent infinite polling
+            setTimeout(() => {
+                if (pollingInterval) {
+                    stopCrawlerStatusPolling();
+                    console.log('⏰ Polling stopped due to timeout (30 minutes)');
+                    addLog('System', 'Crawler status polling stopped due to timeout (30 minutes)');
+                }
+            }, 300 * 60 * 1000); // 300 minutes
+        }
+
+        function stopCrawlerStatusPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+
+                const duration = pollingStartTime ? Math.round((Date.now() - pollingStartTime) / 1000) : 0;
+                console.log(`🛑 Stopped HTTP polling for crawler status (ran for ${duration}s)`);
+
+                // Reset polling start time
+                pollingStartTime = null;
+            }
+        }
+
+        // Cleanup polling when page is unloaded
+        window.addEventListener('beforeunload', () => {
+            stopCrawlerStatusPolling();
+        });
+
+        // Cleanup polling when page visibility changes (user switches tabs)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // Page is hidden, but don't stop polling as user might come back
+                // Just log for debugging
+                console.log('Page hidden, continuing polling in background');
+            } else {
+                // Page is visible again
+                console.log('Page visible again');
+            }
+        });
+
+        // Test function for HTTP polling (for debugging)
+        function testPollingMechanism() {
+            console.log('🧪 Testing HTTP polling mechanism');
+            addLog('System', 'Testing HTTP polling mechanism');
+            showLoadingOverlay();
+            startCrawlerStatusPolling();
+
+            // Simulate completion after 10 seconds for testing
+            setTimeout(() => {
+                console.log('🧪 Simulating completion for test');
+                hideLoadingOverlay();
+                showSuccessNotification();
+                stopCrawlerStatusPolling();
+            }, 10000);
+        }
+
+        // Add test function to global scope for console access
+        window.testPollingMechanism = testPollingMechanism;
 
 
 
