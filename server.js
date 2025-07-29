@@ -17,8 +17,13 @@ const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
         origin: "*",
-        methods: ["GET", "POST"]
-    }
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    allowEIO3: true,
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000
 });
 
 // Security middleware
@@ -75,6 +80,21 @@ let crawlerState = {
         logs: [],
         currentPhase: null // Track current phase: 'categories', 'girls', 'completed'
     }
+};
+
+// Distributed crawling state
+const distributedCrawlingState = {
+    isActive: false,
+    connectedClients: new Map(),
+    taskQueue: [],
+    completedTasks: [],
+    totalTasks: 0,
+    completedCount: 0,
+    failedCount: 0,
+    currentPhase: 'idle', // 'idle', 'distributing', 'crawling', 'completed'
+    startTime: null,
+    endTime: null,
+    results: []
 };
 
 // Initialize crawler state with current CSV counts
@@ -204,9 +224,145 @@ app.get('/dashboard', requireAuth, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
+// Distributed crawling client (no auth required for external clients)
+app.get('/distributed-client', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'distributed-client.html'));
+});
+
 // API Routes
 app.get('/api/crawler-state', requireAuth, (req, res) => {
     res.json(crawlerState);
+});
+
+// Distributed crawling API endpoints
+app.get('/api/distributed-state', requireAuth, (req, res) => {
+    res.json({
+        isActive: distributedCrawlingState.isActive,
+        connectedClients: distributedCrawlingState.connectedClients.size,
+        totalTasks: distributedCrawlingState.totalTasks,
+        completedCount: distributedCrawlingState.completedCount,
+        failedCount: distributedCrawlingState.failedCount,
+        currentPhase: distributedCrawlingState.currentPhase,
+        clients: Array.from(distributedCrawlingState.connectedClients.values()).map(client => ({
+            socketId: client.socketId,
+            userAgent: client.userAgent,
+            connectedAt: client.connectedAt,
+            tasksCompleted: client.tasksCompleted,
+            tasksFailed: client.tasksFailed,
+            isActive: client.isActive
+        }))
+    });
+});
+
+app.post('/api/start-distributed-crawling', requireAuth, async (req, res) => {
+    if (distributedCrawlingState.isActive) {
+        return res.status(400).json({ error: 'Distributed crawling is already active' });
+    }
+
+    if (distributedCrawlingState.connectedClients.size === 0) {
+        return res.status(400).json({ error: 'No distributed clients connected' });
+    }
+
+    try {
+        // Read list-girl.csv to create tasks
+        const listGirlPath = path.join(__dirname, 'list-girl.csv');
+        if (!fs.existsSync(listGirlPath)) {
+            return res.status(400).json({ error: 'list-girl.csv not found. Run categories crawler first.' });
+        }
+
+        const csvContent = fs.readFileSync(listGirlPath, 'utf8');
+        const lines = csvContent.trim().split('\n');
+        const urls = lines.slice(1).map(line => {
+            const parts = line.split(',');
+            return parts[2] ? parts[2].replace(/"/g, '') : null;
+        }).filter(url => url);
+
+        // Create tasks from URLs
+        distributedCrawlingState.taskQueue = urls.map((url, index) => ({
+            id: index + 1,
+            url: url,
+            type: 'profile-crawl'
+        }));
+
+        distributedCrawlingState.isActive = true;
+        distributedCrawlingState.totalTasks = urls.length;
+        distributedCrawlingState.completedCount = 0;
+        distributedCrawlingState.failedCount = 0;
+        distributedCrawlingState.currentPhase = 'distributing';
+        distributedCrawlingState.startTime = new Date();
+        distributedCrawlingState.completedTasks = [];
+        distributedCrawlingState.results = [];
+
+        // Distribute initial tasks to connected clients
+        const clients = Array.from(distributedCrawlingState.connectedClients.keys());
+        clients.forEach(socketId => {
+            if (distributedCrawlingState.taskQueue.length > 0) {
+                const task = distributedCrawlingState.taskQueue.shift();
+                io.to(socketId).emit('new-task', task);
+            }
+        });
+
+        distributedCrawlingState.currentPhase = 'crawling';
+
+        // Broadcast state update
+        io.emit('distributed-state-update', {
+            isActive: distributedCrawlingState.isActive,
+            connectedClients: distributedCrawlingState.connectedClients.size,
+            totalTasks: distributedCrawlingState.totalTasks,
+            completedCount: distributedCrawlingState.completedCount,
+            failedCount: distributedCrawlingState.failedCount,
+            currentPhase: distributedCrawlingState.currentPhase
+        });
+
+        res.json({
+            success: true,
+            message: `Distributed crawling started with ${urls.length} tasks for ${clients.length} clients`
+        });
+
+    } catch (error) {
+        console.error('Error starting distributed crawling:', error);
+        distributedCrawlingState.isActive = false;
+        res.status(500).json({ error: 'Failed to start distributed crawling' });
+    }
+});
+
+app.post('/api/stop-distributed-crawling', requireAuth, async (req, res) => {
+    if (!distributedCrawlingState.isActive) {
+        return res.status(400).json({ error: 'Distributed crawling is not active' });
+    }
+
+    try {
+        distributedCrawlingState.isActive = false;
+        distributedCrawlingState.currentPhase = 'completed';
+        distributedCrawlingState.endTime = new Date();
+
+        // Notify all clients to stop
+        io.emit('stop-crawling');
+
+        // Save results to CSV if any
+        if (distributedCrawlingState.results.length > 0) {
+            await saveDistributedResults();
+        }
+
+        // Broadcast final state update
+        io.emit('distributed-state-update', {
+            isActive: distributedCrawlingState.isActive,
+            connectedClients: distributedCrawlingState.connectedClients.size,
+            totalTasks: distributedCrawlingState.totalTasks,
+            completedCount: distributedCrawlingState.completedCount,
+            failedCount: distributedCrawlingState.failedCount,
+            currentPhase: distributedCrawlingState.currentPhase
+        });
+
+        res.json({
+            success: true,
+            message: `Distributed crawling stopped. Completed: ${distributedCrawlingState.completedCount}, Failed: ${distributedCrawlingState.failedCount}`
+        });
+
+    } catch (error) {
+        console.error('Error stopping distributed crawling:', error);
+        res.status(500).json({ error: 'Failed to stop distributed crawling' });
+    }
 });
 
 
@@ -442,13 +598,131 @@ app.post('/api/sync-csv-data', requireAuth, async (req, res) => {
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
-    
+    console.log('Client connected:', socket.id, 'from:', socket.handshake.address);
+
     // Send current crawler state to new client
     socket.emit('crawler-state-update', crawlerState);
-    
-    socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
+
+    // Send distributed crawling state to new client
+    socket.emit('distributed-state-update', {
+        isActive: distributedCrawlingState.isActive,
+        connectedClients: distributedCrawlingState.connectedClients.size,
+        totalTasks: distributedCrawlingState.totalTasks,
+        completedCount: distributedCrawlingState.completedCount,
+        failedCount: distributedCrawlingState.failedCount,
+        currentPhase: distributedCrawlingState.currentPhase
+    });
+
+    // Handle distributed crawling client registration
+    socket.on('register-distributed-client', (clientInfo) => {
+        console.log('Distributed client registered:', socket.id, clientInfo);
+        distributedCrawlingState.connectedClients.set(socket.id, {
+            ...clientInfo,
+            socketId: socket.id,
+            connectedAt: new Date(),
+            tasksCompleted: 0,
+            tasksFailed: 0,
+            isActive: true
+        });
+
+        // Broadcast updated client count
+        io.emit('distributed-state-update', {
+            isActive: distributedCrawlingState.isActive,
+            connectedClients: distributedCrawlingState.connectedClients.size,
+            totalTasks: distributedCrawlingState.totalTasks,
+            completedCount: distributedCrawlingState.completedCount,
+            failedCount: distributedCrawlingState.failedCount,
+            currentPhase: distributedCrawlingState.currentPhase
+        });
+    });
+
+    // Handle task completion from distributed clients
+    socket.on('task-completed', (taskResult) => {
+        console.log('Task completed by client:', socket.id, taskResult);
+
+        const client = distributedCrawlingState.connectedClients.get(socket.id);
+        if (client) {
+            client.tasksCompleted++;
+            distributedCrawlingState.completedCount++;
+            distributedCrawlingState.completedTasks.push(taskResult);
+
+            // Store result data
+            if (taskResult.data) {
+                distributedCrawlingState.results.push(taskResult.data);
+            }
+
+            // Send next task if available
+            if (distributedCrawlingState.taskQueue.length > 0) {
+                const nextTask = distributedCrawlingState.taskQueue.shift();
+                socket.emit('new-task', nextTask);
+            }
+
+            // Broadcast progress update
+            io.emit('distributed-state-update', {
+                isActive: distributedCrawlingState.isActive,
+                connectedClients: distributedCrawlingState.connectedClients.size,
+                totalTasks: distributedCrawlingState.totalTasks,
+                completedCount: distributedCrawlingState.completedCount,
+                failedCount: distributedCrawlingState.failedCount,
+                currentPhase: distributedCrawlingState.currentPhase
+            });
+        }
+    });
+
+    // Handle task failure from distributed clients
+    socket.on('task-failed', (taskError) => {
+        console.log('Task failed by client:', socket.id, taskError);
+
+        const client = distributedCrawlingState.connectedClients.get(socket.id);
+        if (client) {
+            client.tasksFailed++;
+            distributedCrawlingState.failedCount++;
+
+            // Send next task if available
+            if (distributedCrawlingState.taskQueue.length > 0) {
+                const nextTask = distributedCrawlingState.taskQueue.shift();
+                socket.emit('new-task', nextTask);
+            }
+
+            // Broadcast progress update
+            io.emit('distributed-state-update', {
+                isActive: distributedCrawlingState.isActive,
+                connectedClients: distributedCrawlingState.connectedClients.size,
+                totalTasks: distributedCrawlingState.totalTasks,
+                completedCount: distributedCrawlingState.completedCount,
+                failedCount: distributedCrawlingState.failedCount,
+                currentPhase: distributedCrawlingState.currentPhase
+            });
+        }
+    });
+
+    // Handle connection errors
+    socket.on('error', (error) => {
+        console.error('Socket error for client', socket.id, ':', error);
+    });
+
+    // Handle ping/pong for connection health
+    socket.on('ping', () => {
+        socket.emit('pong');
+    });
+
+    socket.on('disconnect', (reason) => {
+        console.log('Client disconnected:', socket.id, 'reason:', reason);
+
+        // Remove from distributed clients if registered
+        if (distributedCrawlingState.connectedClients.has(socket.id)) {
+            distributedCrawlingState.connectedClients.delete(socket.id);
+
+            // Broadcast updated client count
+            io.emit('distributed-state-update', {
+                isActive: distributedCrawlingState.isActive,
+                connectedClients: distributedCrawlingState.connectedClients.size,
+                totalTasks: distributedCrawlingState.totalTasks,
+                completedCount: distributedCrawlingState.completedCount,
+                failedCount: distributedCrawlingState.failedCount,
+                currentPhase: distributedCrawlingState.currentPhase
+            });
+        }
     });
 });
 
@@ -467,6 +741,30 @@ function broadcastUpdate(type, data) {
         io.emit('stopped', data);
     }
     // For 'progress' type, we just need the state update which is already emitted above
+}
+
+// Helper function to save distributed crawling results
+async function saveDistributedResults() {
+    try {
+        const csvWriter = require('csv-writer').createObjectCsvWriter({
+            path: path.join(__dirname, 'distributed-results.csv'),
+            header: [
+                { id: 'nickname', title: 'Nickname' },
+                { id: 'age', title: 'Age' },
+                { id: 'location', title: 'Location' },
+                { id: 'phone', title: 'Phone' },
+                { id: 'url', title: 'URL' },
+                { id: 'crawledAt', title: 'Crawled At' }
+            ]
+        });
+
+        await csvWriter.writeRecords(distributedCrawlingState.results);
+        console.log(`✅ Saved ${distributedCrawlingState.results.length} distributed crawling results to distributed-results.csv`);
+
+    } catch (error) {
+        console.error('Error saving distributed results:', error);
+        throw error;
+    }
 }
 
 // Helper function to update categories progress based on girls processed
@@ -1128,10 +1426,13 @@ async function runGirlsCrawlerSequential() {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`🚀 Crawler Web Interface running on http://localhost:${PORT}`);
-    console.log(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
+const HOST = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for production
+
+server.listen(PORT, HOST, () => {
+    console.log(`🚀 Crawler Web Interface running on http://${HOST}:${PORT}`);
+    console.log(`📊 Dashboard: http://${HOST}:${PORT}/dashboard`);
     console.log(`🔐 Default login: admin / password`);
+    console.log(`🌐 External access: http://46.202.153.114:${PORT}`);
 
     // Setup file watching for real-time updates
     setupFileWatching();
