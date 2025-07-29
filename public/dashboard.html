@@ -464,6 +464,12 @@
             animation: pulse 2s infinite;
         }
 
+        .connection-indicator.reconnecting {
+            background: #ffc107;
+            box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+            animation: pulse 1s infinite;
+        }
+
         /* Downloads Section Styles */
         .downloads-section {
             background: rgba(255, 255, 255, 0.95);
@@ -732,8 +738,14 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Initialize Socket.io connection
-        const socket = io();
+        // Initialize Socket.io connection with reconnection settings
+        const socket = io({
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000
+        });
         
         // Connection status handling
         socket.on('connect', () => {
@@ -746,6 +758,28 @@
             document.getElementById('connection-indicator').classList.add('disconnected');
             document.getElementById('connection-status').textContent = 'Disconnected';
             addLog('System', 'Disconnected from server');
+        });
+
+        // Handle reconnection attempts
+        socket.on('reconnect_attempt', (attemptNumber) => {
+            const indicator = document.getElementById('connection-indicator');
+            indicator.classList.remove('disconnected');
+            indicator.classList.add('reconnecting');
+            document.getElementById('connection-status').textContent = `Reconnecting... (${attemptNumber})`;
+            addLog('System', `Reconnection attempt ${attemptNumber}`);
+        });
+
+        // Handle successful reconnection
+        socket.on('reconnect', (attemptNumber) => {
+            const indicator = document.getElementById('connection-indicator');
+            indicator.classList.remove('disconnected', 'reconnecting');
+            document.getElementById('connection-status').textContent = 'Connected';
+            addLog('System', `Reconnected to server after ${attemptNumber} attempts`);
+        });
+
+        // Handle reconnection errors
+        socket.on('reconnect_error', (error) => {
+            addLog('System', 'Reconnection failed, retrying...');
         });
         
         // Crawler state updates
