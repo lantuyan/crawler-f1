@@ -719,6 +719,55 @@
             </div>
         </div>
 
+        <!-- Distributed Crawling Section -->
+        <div class="controls-section">
+            <h2 style="margin-bottom: 1.5rem;">🌐 Distributed Crawling</h2>
+            <div class="controls-grid">
+                <!-- Distributed Crawling Control -->
+                <div class="crawler-control" id="distributed-control">
+                    <h3>🕷️ Distributed Crawling</h3>
+                    <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">
+                        Coordinate distributed crawling across multiple browser clients
+                    </p>
+                    <div style="margin-bottom: 1rem;">
+                        <a href="/distributed-client" target="_blank" class="crawler-btn" style="text-decoration: none; display: inline-block; margin-right: 10px;">
+                            🔗 Open Client Interface
+                        </a>
+                        <button class="crawler-btn distributed" id="distributed-start-btn" onclick="startDistributedCrawling()">
+                            Start Distributed Crawling
+                        </button>
+                        <button class="crawler-btn stop" id="distributed-stop-btn" onclick="stopDistributedCrawling()" disabled>
+                            Stop Distributed Crawling
+                        </button>
+                    </div>
+                    <div class="progress-container" id="distributed-progress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="distributed-progress-fill"></div>
+                        </div>
+                        <div class="progress-text" id="distributed-progress-text">0%</div>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-value" id="distributed-clients">0</div>
+                                <div class="stat-label">Connected Clients</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="distributed-completed">0</div>
+                                <div class="stat-label">Tasks Completed</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="distributed-failed">0</div>
+                                <div class="stat-label">Tasks Failed</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="distributed-total">0</div>
+                                <div class="stat-label">Total Tasks</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Logs Section -->
         <div class="logs-section">
             <h2 style="margin-bottom: 1rem;">📝 Live Logs</h2>
@@ -1103,6 +1152,85 @@
                 girlsDownloadControl.classList.remove('available');
             }
         }
+
+        // Distributed crawling functions
+        async function startDistributedCrawling() {
+            try {
+                const response = await fetch('/api/start-distributed-crawling', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error);
+                }
+
+                addLog('System', 'Distributed crawling started successfully');
+
+                // Update UI
+                document.getElementById('distributed-start-btn').disabled = true;
+                document.getElementById('distributed-stop-btn').disabled = false;
+                document.getElementById('distributed-progress').style.display = 'block';
+
+            } catch (error) {
+                addLog('System', 'Error starting distributed crawling: ' + error.message);
+                alert('Error starting distributed crawling: ' + error.message);
+            }
+        }
+
+        async function stopDistributedCrawling() {
+            try {
+                const response = await fetch('/api/stop-distributed-crawling', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error);
+                }
+
+                addLog('System', 'Distributed crawling stopped successfully');
+
+                // Update UI
+                document.getElementById('distributed-start-btn').disabled = false;
+                document.getElementById('distributed-stop-btn').disabled = true;
+
+            } catch (error) {
+                addLog('System', 'Error stopping distributed crawling: ' + error.message);
+                alert('Error stopping distributed crawling: ' + error.message);
+            }
+        }
+
+        // Handle distributed crawling state updates
+        socket.on('distributed-state-update', (state) => {
+            // Update distributed crawling stats
+            document.getElementById('distributed-clients').textContent = state.connectedClients;
+            document.getElementById('distributed-completed').textContent = state.completedCount;
+            document.getElementById('distributed-failed').textContent = state.failedCount;
+            document.getElementById('distributed-total').textContent = state.totalTasks;
+
+            // Update progress
+            if (state.totalTasks > 0) {
+                const progress = Math.round(((state.completedCount + state.failedCount) / state.totalTasks) * 100);
+                document.getElementById('distributed-progress-text').textContent = `${progress}%`;
+                document.getElementById('distributed-progress-fill').style.width = `${progress}%`;
+            }
+
+            // Update button states based on crawling status
+            if (state.isActive) {
+                document.getElementById('distributed-start-btn').disabled = true;
+                document.getElementById('distributed-stop-btn').disabled = false;
+                document.getElementById('distributed-progress').style.display = 'block';
+            } else {
+                document.getElementById('distributed-start-btn').disabled = false;
+                document.getElementById('distributed-stop-btn').disabled = true;
+                if (state.currentPhase === 'idle') {
+                    document.getElementById('distributed-progress').style.display = 'none';
+                }
+            }
+        });
 
 
         function logout() {
