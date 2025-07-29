@@ -907,6 +907,46 @@ async function startSequentialCrawler() {
 
         console.log('✅ Phase 1 completed: Categories Crawler finished');
 
+        // CSV Synchronization Phase (between Phase 1 and Phase 2)
+        crawlerState.girls.currentPhase = 'sync';
+        broadcastUpdate('phase-change', { type: 'girls', phase: 'sync' });
+
+        console.log('🔄 Preparing for Phase 2: Synchronizing CSV data...');
+        crawlerState.girls.logs.push({
+            timestamp: new Date(),
+            message: `🔄 Preparing for Phase 2: Synchronizing CSV data...`
+        });
+        broadcastUpdate('log', { type: 'girls', message: '🔄 Preparing for Phase 2: Synchronizing CSV data...' });
+
+        try {
+            crawlerState.girls.logs.push({
+                timestamp: new Date(),
+                message: `🔄 Starting data synchronization between list-girl.csv and list-girl-stored.csv...`
+            });
+            broadcastUpdate('log', { type: 'girls', message: '🔄 Starting data synchronization between list-girl.csv and list-girl-stored.csv...' });
+
+            const syncResult = await synchronizeCSVData();
+
+            crawlerState.girls.logs.push({
+                timestamp: new Date(),
+                message: `✅ Data synchronization completed: ${syncResult.newRecords} new records added, ${syncResult.duplicatesRemoved} duplicates removed, ${syncResult.obsoleteRecords} obsolete records cleaned`
+            });
+            broadcastUpdate('log', { type: 'girls', message: `✅ Data synchronization completed: ${syncResult.newRecords} new records added, ${syncResult.duplicatesRemoved} duplicates removed, ${syncResult.obsoleteRecords} obsolete records cleaned` });
+
+            console.log(`✅ CSV synchronization completed: ${syncResult.newRecords} new records added, ${syncResult.duplicatesRemoved} duplicates removed, ${syncResult.obsoleteRecords} obsolete records cleaned`);
+
+        } catch (syncError) {
+            console.error('❌ CSV synchronization failed:', syncError);
+            crawlerState.girls.logs.push({
+                timestamp: new Date(),
+                message: `❌ CSV synchronization failed: ${syncError.message}`
+            });
+            broadcastUpdate('log', { type: 'girls', message: `❌ CSV synchronization failed: ${syncError.message}` });
+
+            // Continue with girls crawler even if sync fails
+            console.log('⚠️ Continuing with Girls Crawler despite sync failure...');
+        }
+
         // Phase 2: Girls Crawler
         crawlerState.girls.currentPhase = 'girls';
         crawlerState.girls.progress = 50; // Start at 50% since categories is done
