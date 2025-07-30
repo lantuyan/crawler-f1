@@ -631,11 +631,34 @@ async function initBrowser() {
     return { browser, useProxy };
 }
 
-// Function to read URLs from CSV
+// Memory-efficient function to count CSV lines
+function countCSVLines(csvPath) {
+    try {
+        if (!fs.existsSync(csvPath)) {
+            return 0;
+        }
+
+        const data = fs.readFileSync(csvPath, 'utf8');
+        const lineCount = data.split('\n').filter(line => line.trim()).length;
+        return Math.max(0, lineCount - 1); // Exclude header
+    } catch (error) {
+        console.error(`Error counting CSV lines in ${csvPath}:`, error);
+        return 0;
+    }
+}
+
+// Function to read URLs from CSV with memory optimization
 function readUrlsFromCsv() {
     try {
         const path = require('path');
         const csvPath = path.resolve('list-girl.csv');
+
+        // First check if file exists
+        if (!fs.existsSync(csvPath)) {
+            console.error('❌ list-girl.csv file not found');
+            return [];
+        }
+
         const csvContent = fs.readFileSync(csvPath, 'utf8');
         const lines = csvContent.split('\n');
         const urls = [];
@@ -2198,10 +2221,8 @@ async function runGirlsCrawlerForWeb() {
             throw new Error('list-girl.csv not found. Please run the categories crawler first.');
         }
 
-        // Count total URLs to process
-        const csvContent = fs.readFileSync(listGirlPath, 'utf8');
-        const lines = csvContent.split('\n').filter(line => line.trim() !== '');
-        const totalUrls = lines.length - 1; // Exclude header
+        // Count total URLs to process using memory-efficient method
+        const totalUrls = countCSVLines(listGirlPath);
         console.log(`📊 Found ${totalUrls} URLs to process in list-girl.csv`);
 
         const startTime = Date.now();
@@ -2248,6 +2269,7 @@ module.exports = {
     isValidProfileData, // Data validation function
     determineBlockType, // Block type detection function
     clearDetailGirlsCsv, // CSV clearing function
+    countCSVLines, // Memory-efficient CSV line counting
 
     // Real-time state management functions
     initializeGlobalState, // Initialize global state reference

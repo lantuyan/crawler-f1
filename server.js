@@ -46,6 +46,18 @@ const users = {
     }
 };
 
+// Configuration for memory management
+const MEMORY_CONFIG = {
+    MAX_LOG_ENTRIES: 1000, // Maximum number of log entries to keep in memory
+    LOG_CLEANUP_INTERVAL: 300000, // 5 minutes in milliseconds
+    SSE_HEARTBEAT_INTERVAL: 30000, // 30 seconds
+    SSE_CLEANUP_INTERVAL: 60000, // 1 minute
+    MEMORY_CHECK_INTERVAL: 60000, // 1 minute
+    MEMORY_WARNING_THRESHOLD: 0.8, // 80% of heap limit
+    MEMORY_CRITICAL_THRESHOLD: 0.9, // 90% of heap limit
+    FORCE_GC_THRESHOLD: 0.85 // 85% of heap limit
+};
+
 // Crawler state management
 let crawlerState = {
     categories: {
@@ -70,29 +82,147 @@ let crawlerState = {
     }
 };
 
+// Memory management functions
+function trimLogs(logsArray, maxEntries = MEMORY_CONFIG.MAX_LOG_ENTRIES) {
+    if (logsArray.length > maxEntries) {
+        const excess = logsArray.length - maxEntries;
+        logsArray.splice(0, excess);
+        console.log(`🧹 Trimmed ${excess} old log entries to prevent memory leak`);
+        return excess;
+    }
+    return 0;
+}
+
+function addLogEntry(logsArray, logEntry) {
+    logsArray.push(logEntry);
+    // Immediately trim if we exceed the limit
+    trimLogs(logsArray);
+}
+
+// Periodic log cleanup to prevent memory leaks
+function performLogCleanup() {
+    const categoriesTrimmed = trimLogs(crawlerState.categories.logs);
+    const girlsTrimmed = trimLogs(crawlerState.girls.logs);
+
+    if (categoriesTrimmed > 0 || girlsTrimmed > 0) {
+        console.log(`🧹 Log cleanup: Trimmed ${categoriesTrimmed} categories logs, ${girlsTrimmed} girls logs`);
+    }
+}
+
+// Start periodic log cleanup
+const logCleanupInterval = setInterval(performLogCleanup, MEMORY_CONFIG.LOG_CLEANUP_INTERVAL);
+
+// Memory-efficient CSV utilities
+function countCSVLines(filePath) {
+    try {
+        if (!fs.existsSync(filePath)) {
+            return 0;
+        }
+
+        // Use streaming to count lines without loading entire file into memory
+        const data = fs.readFileSync(filePath, 'utf8');
+        const lineCount = data.split('\n').filter(line => line.trim()).length;
+        return Math.max(0, lineCount - 1); // Exclude header
+    } catch (error) {
+        console.error(`Error counting CSV lines in ${filePath}:`, error);
+        return 0;
+    }
+}
+
+function readCSVHeader(filePath) {
+    try {
+        if (!fs.existsSync(filePath)) {
+            return null;
+        }
+
+        // Read only the first line to get header
+        const fd = fs.openSync(filePath, 'r');
+        const buffer = Buffer.alloc(1024); // Read first 1KB
+        const bytesRead = fs.readSync(fd, buffer, 0, 1024, 0);
+        fs.closeSync(fd);
+
+        const content = buffer.toString('utf8', 0, bytesRead);
+        const firstLine = content.split('\n')[0];
+        return firstLine.trim();
+    } catch (error) {
+        console.error(`Error reading CSV header from ${filePath}:`, error);
+        return null;
+    }
+}
+
+// Memory monitoring and management
+function getMemoryUsage() {
+    const memUsage = process.memoryUsage();
+    const heapUsed = memUsage.heapUsed;
+    const heapTotal = memUsage.heapTotal;
+    const external = memUsage.external;
+    const rss = memUsage.rss;
+
+    return {
+        heapUsed: Math.round(heapUsed / 1024 / 1024), // MB
+        heapTotal: Math.round(heapTotal / 1024 / 1024), // MB
+        external: Math.round(external / 1024 / 1024), // MB
+        rss: Math.round(rss / 1024 / 1024), // MB
+        heapUsedPercent: heapUsed / heapTotal
+    };
+}
+
+function performMemoryCleanup() {
+    const memUsage = getMemoryUsage();
+
+    // Log memory usage
+    console.log(`🧠 Memory Usage: ${memUsage.heapUsed}MB/${memUsage.heapTotal}MB (${Math.round(memUsage.heapUsedPercent * 100)}%)`);
+
+    // Perform aggressive cleanup if memory usage is high
+    if (memUsage.heapUsedPercent > MEMORY_CONFIG.MEMORY_CRITICAL_THRESHOLD) {
+        console.log('🚨 Critical memory usage detected! Performing emergency cleanup...');
+
+        // Trim logs more aggressively
+        const categoriesTrimmed = trimLogs(crawlerState.categories.logs, 100);
+        const girlsTrimmed = trimLogs(crawlerState.girls.logs, 100);
+
+        // Clean up SSE clients
+        cleanupSSEClients();
+
+        console.log(`🧹 Emergency cleanup: Trimmed ${categoriesTrimmed + girlsTrimmed} log entries, cleaned SSE clients`);
+
+        // Force garbage collection if available
+        if (global.gc) {
+            global.gc();
+            console.log('🗑️ Forced garbage collection');
+        }
+
+    } else if (memUsage.heapUsedPercent > MEMORY_CONFIG.MEMORY_WARNING_THRESHOLD) {
+        console.log('⚠️ High memory usage detected. Performing routine cleanup...');
+        performLogCleanup();
+        cleanupSSEClients();
+
+    } else if (memUsage.heapUsedPercent > MEMORY_CONFIG.FORCE_GC_THRESHOLD && global.gc) {
+        global.gc();
+        console.log('🗑️ Preventive garbage collection');
+    }
+
+    return memUsage;
+}
+
+// Start periodic memory monitoring
+const memoryMonitorInterval = setInterval(performMemoryCleanup, MEMORY_CONFIG.MEMORY_CHECK_INTERVAL);
+
 // Initialize crawler state with current CSV counts
 function initializeCrawlerState() {
     try {
-        // Check current count in list-girl.csv
+        // Check current count in list-girl.csv using memory-efficient counting
         const listGirlPath = path.join(__dirname, 'list-girl.csv');
-        if (fs.existsSync(listGirlPath)) {
-            const csvContent = fs.readFileSync(listGirlPath, 'utf8');
-            const lines = csvContent.trim().split('\n');
-            const currentCount = Math.max(0, lines.length - 1); // Exclude header
-            crawlerState.categories.crawledGirls = currentCount;
-            console.log(`📊 Initialized Girls Found count to: ${currentCount} (from existing CSV)`);
-            updateCategoriesProgress();
-        }
+        const currentCount = countCSVLines(listGirlPath);
+        crawlerState.categories.crawledGirls = currentCount;
+        console.log(`📊 Initialized Girls Found count to: ${currentCount} (from existing CSV)`);
+        updateCategoriesProgress();
 
-        // Check current count in detail-girls.csv for girls crawler
+        // Check current count in detail-girls.csv for girls crawler using memory-efficient counting
         const detailGirlsPath = path.join(__dirname, 'detail-girls.csv');
-        if (fs.existsSync(detailGirlsPath)) {
-            const csvContent = fs.readFileSync(detailGirlsPath, 'utf8');
-            const lines = csvContent.trim().split('\n');
-            const currentCount = Math.max(0, lines.length - 1); // Exclude header
-            crawlerState.girls.processedProfiles = currentCount;
-            console.log(`📊 Initialized Girls Processed count to: ${currentCount} (from existing detail CSV)`);
-        }
+        const processedCount = countCSVLines(detailGirlsPath);
+        crawlerState.girls.processedProfiles = processedCount;
+        console.log(`📊 Initialized Girls Processed count to: ${processedCount} (from existing detail CSV)`);
 
         // Initialize totalGirlsExpected asynchronously
         initializeTotalGirlsExpected();
@@ -202,6 +332,22 @@ app.get('/api/crawler-state', requireAuth, (req, res) => {
     res.json(crawlerState);
 });
 
+// Memory usage API endpoint
+app.get('/api/memory-usage', requireAuth, (req, res) => {
+    const memUsage = getMemoryUsage();
+    res.json({
+        success: true,
+        memory: memUsage,
+        thresholds: {
+            warning: MEMORY_CONFIG.MEMORY_WARNING_THRESHOLD,
+            critical: MEMORY_CONFIG.MEMORY_CRITICAL_THRESHOLD,
+            forceGC: MEMORY_CONFIG.FORCE_GC_THRESHOLD
+        },
+        status: memUsage.heapUsedPercent > MEMORY_CONFIG.MEMORY_CRITICAL_THRESHOLD ? 'critical' :
+                memUsage.heapUsedPercent > MEMORY_CONFIG.MEMORY_WARNING_THRESHOLD ? 'warning' : 'normal'
+    });
+});
+
 
 
 // Crawler control endpoints
@@ -268,7 +414,7 @@ app.post('/api/stop-categories-crawler', requireAuth, async (req, res) => {
         requestStop();
 
         // Update crawler state to indicate stopping
-        crawlerState.categories.logs.push({
+        addLogEntry(crawlerState.categories.logs, {
             timestamp: new Date(),
             message: '🛑 Stop requested by user - crawler will stop gracefully after current operations complete'
         });
@@ -292,7 +438,7 @@ app.post('/api/stop-girls-crawler', requireAuth, async (req, res) => {
     try {
         // For now, we'll just mark it as stopped since the girls crawler doesn't have a stop mechanism yet
         // This is a placeholder for future implementation
-        crawlerState.girls.logs.push({
+        addLogEntry(crawlerState.girls.logs, {
             timestamp: new Date(),
             message: '🛑 Stop requested by user - girls crawler will be stopped (feature in development)'
         });
@@ -537,6 +683,7 @@ app.post('/api/sync-csv-data', requireAuth, async (req, res) => {
 
 // Server-Sent Events (SSE) connection handling
 const sseClients = new Set();
+const sseClientHeartbeats = new Map(); // Track heartbeat intervals for each client
 
 // SSE endpoint for real-time updates
 app.get('/api/events', requireAuth, (req, res) => {
@@ -561,15 +708,21 @@ app.get('/api/events', requireAuth, (req, res) => {
     sseClients.add(res);
     console.log(`SSE client connected. Total clients: ${sseClients.size}`);
 
-    // Handle client disconnect
-    req.on('close', () => {
+    // Function to cleanup client resources
+    const cleanupClient = () => {
         sseClients.delete(res);
+        if (sseClientHeartbeats.has(res)) {
+            clearInterval(sseClientHeartbeats.get(res));
+            sseClientHeartbeats.delete(res);
+        }
         console.log(`SSE client disconnected. Total clients: ${sseClients.size}`);
-    });
+    };
 
+    // Handle client disconnect
+    req.on('close', cleanupClient);
     req.on('error', (err) => {
         console.error('SSE client error:', err);
-        sseClients.delete(res);
+        cleanupClient();
     });
 
     // Send periodic heartbeat to keep connection alive
@@ -580,13 +733,16 @@ app.get('/api/events', requireAuth, (req, res) => {
                 res.write(`data: ${JSON.stringify({ timestamp: new Date().toISOString() })}\n\n`);
             } catch (error) {
                 console.error('Error sending heartbeat:', error);
-                clearInterval(heartbeat);
-                sseClients.delete(res);
+                cleanupClient();
             }
         } else {
             clearInterval(heartbeat);
+            sseClientHeartbeats.delete(res);
         }
-    }, 30000); // Send heartbeat every 30 seconds
+    }, MEMORY_CONFIG.SSE_HEARTBEAT_INTERVAL);
+
+    // Store heartbeat interval for cleanup
+    sseClientHeartbeats.set(res, heartbeat);
 });
 
 // Helper function to broadcast updates via SSE
@@ -625,7 +781,12 @@ function broadcastUpdate(type, data) {
         } catch (error) {
             // Use process.stdout.write to avoid infinite recursion with overridden console.log
             process.stdout.write(`Error broadcasting to SSE client: ${error.message}\n`);
+            // Clean up client and its heartbeat interval
             sseClients.delete(client);
+            if (sseClientHeartbeats.has(client)) {
+                clearInterval(sseClientHeartbeats.get(client));
+                sseClientHeartbeats.delete(client);
+            }
         }
     });
 
@@ -647,15 +808,20 @@ function cleanupSSEClients() {
 
     clientsToRemove.forEach(client => {
         sseClients.delete(client);
+        // Also clean up heartbeat intervals
+        if (sseClientHeartbeats.has(client)) {
+            clearInterval(sseClientHeartbeats.get(client));
+            sseClientHeartbeats.delete(client);
+        }
     });
 
     if (clientsToRemove.length > 0) {
-        console.log(`Cleaned up ${clientsToRemove.length} disconnected SSE clients`);
+        console.log(`🧹 Cleaned up ${clientsToRemove.length} disconnected SSE clients and their heartbeat intervals`);
     }
 }
 
 // Periodic cleanup of disconnected SSE clients
-setInterval(cleanupSSEClients, 60000); // Every minute
+const sseCleanupInterval = setInterval(cleanupSSEClients, MEMORY_CONFIG.SSE_CLEANUP_INTERVAL);
 
 // Helper function to update categories progress based on girls processed
 function updateCategoriesProgress() {
@@ -843,7 +1009,7 @@ async function startCategoriesCrawler() {
         const originalLog = console.log;
         console.log = (...args) => {
             const message = args.join(' ');
-            crawlerState.categories.logs.push({
+            addLogEntry(crawlerState.categories.logs, {
                 timestamp: new Date(),
                 message: message
             });
@@ -972,7 +1138,7 @@ async function startCategoriesCrawler() {
 
         // Check if crawler was stopped by user or completed naturally
         if (result.stopped) {
-            crawlerState.categories.logs.push({
+            addLogEntry(crawlerState.categories.logs, {
                 timestamp: new Date(),
                 message: `🛑 Crawler stopped by user. Crawled ${result.totalCrawled} girls in ${result.cycles} cycles (${result.duration}s)`
             });
@@ -980,7 +1146,7 @@ async function startCategoriesCrawler() {
         } else {
             // Run data synchronization after successful completion
             try {
-                crawlerState.categories.logs.push({
+                addLogEntry(crawlerState.categories.logs, {
                     timestamp: new Date(),
                     message: `🔄 Starting data synchronization between list-girl.csv and list-girl-stored.csv...`
                 });
@@ -988,7 +1154,7 @@ async function startCategoriesCrawler() {
 
                 const syncResult = await synchronizeCSVData();
 
-                crawlerState.categories.logs.push({
+                addLogEntry(crawlerState.categories.logs, {
                     timestamp: new Date(),
                     message: `✅ Data synchronization completed: ${syncResult.newRecords} new records added, ${syncResult.duplicatesRemoved} duplicates removed, ${syncResult.obsoleteRecords} obsolete records cleaned`
                 });
@@ -996,7 +1162,7 @@ async function startCategoriesCrawler() {
 
             } catch (syncError) {
                 console.error('Data synchronization error:', syncError);
-                crawlerState.categories.logs.push({
+                addLogEntry(crawlerState.categories.logs, {
                     timestamp: new Date(),
                     message: `❌ Data synchronization failed: ${syncError.message}`
                 });
@@ -1009,7 +1175,7 @@ async function startCategoriesCrawler() {
     } catch (error) {
         console.error('Categories crawler error:', error);
         crawlerState.categories.isRunning = false;
-        crawlerState.categories.logs.push({
+        addLogEntry(crawlerState.categories.logs, {
             timestamp: new Date(),
             message: `Error: ${error.message}`
         });
@@ -1019,18 +1185,16 @@ async function startCategoriesCrawler() {
 
 async function startGirlsCrawler() {
     try {
-        // Read list-girl.csv to get total count
+        // Get total count using memory-efficient counting
         const listGirlPath = path.join(__dirname, 'list-girl.csv');
-        const csvContent = fs.readFileSync(listGirlPath, 'utf8');
-        const lines = csvContent.trim().split('\n');
-        crawlerState.girls.totalProfiles = Math.max(0, lines.length - 1); // Exclude header
+        crawlerState.girls.totalProfiles = countCSVLines(listGirlPath);
         crawlerState.girls.processedProfiles = 0; // Reset processed count to 0 when starting
 
         // Override console.log to capture logs
         const originalLog = console.log;
         console.log = (...args) => {
             const message = args.join(' ');
-            crawlerState.girls.logs.push({
+            addLogEntry(crawlerState.girls.logs, {
                 timestamp: new Date(),
                 message: message
             });
@@ -1065,7 +1229,7 @@ async function startGirlsCrawler() {
     } catch (error) {
         console.error('Girls crawler error:', error);
         crawlerState.girls.isRunning = false;
-        crawlerState.girls.logs.push({
+        addLogEntry(crawlerState.girls.logs, {
             timestamp: new Date(),
             message: `Error: ${error.message}`
         });
@@ -1106,14 +1270,14 @@ async function startSequentialCrawler() {
         broadcastUpdate('phase-change', { type: 'girls', phase: 'sync' });
 
         console.log('🔄 Preparing for Phase 2: Synchronizing CSV data...');
-        crawlerState.girls.logs.push({
+        addLogEntry(crawlerState.girls.logs, {
             timestamp: new Date(),
             message: `🔄 Preparing for Phase 2: Synchronizing CSV data...`
         });
         broadcastUpdate('log', { type: 'girls', message: '🔄 Preparing for Phase 2: Synchronizing CSV data...' });
 
         try {
-            crawlerState.girls.logs.push({
+            addLogEntry(crawlerState.girls.logs, {
                 timestamp: new Date(),
                 message: `🔄 Starting data synchronization between list-girl.csv and list-girl-stored.csv...`
             });
@@ -1121,7 +1285,7 @@ async function startSequentialCrawler() {
 
             const syncResult = await synchronizeCSVData();
 
-            crawlerState.girls.logs.push({
+            addLogEntry(crawlerState.girls.logs, {
                 timestamp: new Date(),
                 message: `✅ Data synchronization completed: ${syncResult.newRecords} new records added, ${syncResult.duplicatesRemoved} duplicates removed, ${syncResult.obsoleteRecords} obsolete records cleaned`
             });
@@ -1131,7 +1295,7 @@ async function startSequentialCrawler() {
 
         } catch (syncError) {
             console.error('❌ CSV synchronization failed:', syncError);
-            crawlerState.girls.logs.push({
+            addLogEntry(crawlerState.girls.logs, {
                 timestamp: new Date(),
                 message: `❌ CSV synchronization failed: ${syncError.message}`
             });
@@ -1162,7 +1326,7 @@ async function startSequentialCrawler() {
         console.error('Sequential crawler error:', error);
         crawlerState.girls.isRunning = false;
         crawlerState.categories.isRunning = false;
-        crawlerState.girls.logs.push({
+        addLogEntry(crawlerState.girls.logs, {
             timestamp: new Date(),
             message: `Error: ${error.message}`
         });
@@ -1178,13 +1342,13 @@ async function runCategoriesCrawlerSequential() {
         const message = args.join(' ');
 
         // Add to girls crawler logs with phase prefix
-        crawlerState.girls.logs.push({
+        addLogEntry(crawlerState.girls.logs, {
             timestamp: new Date(),
             message: `[Categories] ${message}`
         });
 
         // Also update categories state for internal tracking
-        crawlerState.categories.logs.push({
+        addLogEntry(crawlerState.categories.logs, {
             timestamp: new Date(),
             message: message
         });
@@ -1243,18 +1407,16 @@ async function runCategoriesCrawlerSequential() {
 
 // Girls crawler for sequential execution
 async function runGirlsCrawlerSequential() {
-    // Read list-girl.csv to get total count
+    // Get total count using memory-efficient counting
     const listGirlPath = path.join(__dirname, 'list-girl.csv');
-    const csvContent = fs.readFileSync(listGirlPath, 'utf8');
-    const lines = csvContent.trim().split('\n');
-    crawlerState.girls.totalProfiles = Math.max(0, lines.length - 1);
+    crawlerState.girls.totalProfiles = countCSVLines(listGirlPath);
     crawlerState.girls.processedProfiles = 0;
 
     // Override console.log to capture logs
     const originalLog = console.log;
     console.log = (...args) => {
         const message = args.join(' ');
-        crawlerState.girls.logs.push({
+        addLogEntry(crawlerState.girls.logs, {
             timestamp: new Date(),
             message: `[Girls] ${message}`
         });
@@ -1332,6 +1494,37 @@ async function runGirlsCrawlerSequential() {
 }
 
 const PORT = process.env.PORT || 3000;
+// Graceful shutdown handler
+function gracefulShutdown(signal) {
+    console.log(`\n🛑 Received ${signal}. Performing graceful shutdown...`);
+
+    // Clear all intervals
+    if (typeof logCleanupInterval !== 'undefined') clearInterval(logCleanupInterval);
+    if (typeof memoryMonitorInterval !== 'undefined') clearInterval(memoryMonitorInterval);
+    if (typeof sseCleanupInterval !== 'undefined') clearInterval(sseCleanupInterval);
+
+    // Clean up SSE clients
+    sseClients.forEach(client => {
+        try {
+            client.end();
+        } catch (error) {
+            // Ignore errors during cleanup
+        }
+    });
+
+    // Clean up heartbeat intervals
+    sseClientHeartbeats.forEach(interval => {
+        clearInterval(interval);
+    });
+
+    console.log('🧹 Cleanup completed. Exiting...');
+    process.exit(0);
+}
+
+// Register shutdown handlers
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 server.listen(PORT, () => {
     console.log(`🚀 Crawler Web Interface running on http://localhost:${PORT}`);
     console.log(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
