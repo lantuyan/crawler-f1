@@ -757,6 +757,89 @@
         .download-status.unavailable {
             color: #6c757d;
         }
+
+        /* Crawl Completion Popup Styles */
+        .completion-popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .completion-popup-content {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            width: 90%;
+            animation: popupSlideIn 0.3s ease-out;
+        }
+
+        @keyframes popupSlideIn {
+            from {
+                opacity: 0;
+                transform: scale(0.8) translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .completion-popup-header {
+            padding: 1.5rem 1.5rem 0.5rem;
+            text-align: center;
+        }
+
+        .completion-popup-header h3 {
+            margin: 0;
+            color: #4CAF50;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .completion-popup-body {
+            padding: 0.5rem 1.5rem 1rem;
+            text-align: center;
+        }
+
+        .completion-popup-body p {
+            margin: 0;
+            color: #666;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .completion-popup-footer {
+            padding: 0 1.5rem 1.5rem;
+            text-align: center;
+        }
+
+        .completion-popup-close {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .completion-popup-close:hover {
+            background: #45a049;
+        }
+
+        .completion-popup-close:active {
+            transform: translateY(1px);
+        }
     </style>
 </head>
 <body>
@@ -845,7 +928,7 @@
                         </div>
                         <div class="progress-text" id="girls-progress-text">0%</div>
                         <div class="stats-grid">
-                            <div class="stat-item">
+                            <div class="stat-item" id="girls-total-stat" style="display: none;">
                                 <div class="stat-value" id="girls-total">0</div>
                                 <div class="stat-label">Total Profiles</div>
                             </div>
@@ -894,7 +977,7 @@
         </div>
 
         <!-- Real-time Data Table Section -->
-        <div class="data-table-section">
+        <div class="data-table-section" style="display: none;">
             <h2 style="margin-bottom: 1rem;">📊 Girls Results - Real-time Data</h2>
             <div class="data-table-stats" id="data-table-stats">
                 <div class="stat-item">
@@ -924,6 +1007,21 @@
                 <div class="log-entry">
                     <span class="log-timestamp">[System]</span> Dashboard initialized. Waiting for crawler activity...
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Crawl Completion Popup -->
+    <div id="crawl-completion-popup" class="completion-popup" style="display: none;">
+        <div class="completion-popup-content">
+            <div class="completion-popup-header">
+                <h3>🎉 Crawl Finished</h3>
+            </div>
+            <div class="completion-popup-body">
+                <p>The crawl operation has completed successfully!</p>
+            </div>
+            <div class="completion-popup-footer">
+                <button class="completion-popup-close" onclick="closeCrawlCompletionPopup()">Close</button>
             </div>
         </div>
     </div>
@@ -1020,6 +1118,8 @@
                     const data = JSON.parse(event.data);
                     if (data.type === 'girls') {
                         addLog('System', 'Sequential crawler completed successfully!');
+                        // Hide progress bar and show completion popup
+                        hideProgressBarAndShowCompletion();
                     } else if (data.type === 'categories') {
                         addLog('System', 'Categories crawler completed successfully!');
                     }
@@ -1329,6 +1429,9 @@
                 girlsBtn.textContent = 'Running Sequential Crawl...';
                 girlsProgress.style.display = 'block';
 
+                // Hide total profiles counter during crawling
+                document.getElementById('girls-total-stat').style.display = 'none';
+
                 // Update progress bar
                 document.getElementById('girls-progress-fill').style.width = state.girls.progress + '%';
                 document.getElementById('girls-progress-text').textContent = Math.round(state.girls.progress) + '%';
@@ -1346,12 +1449,19 @@
                 girlsBtn.disabled = false;
                 girlsBtn.textContent = 'Run Crawl Girls';
 
-                // Show progress if completed
+                // Show total profiles counter when not running
+                document.getElementById('girls-total-stat').style.display = 'block';
+
+                // Show progress if completed, but only if popup hasn't been shown yet
                 if (state.girls.progress === 100) {
-                    girlsProgress.style.display = 'block';
+                    if (!crawlCompletedAndPopupShown) {
+                        girlsProgress.style.display = 'block';
+                    }
                     updatePhaseIndicator('completed');
                 } else {
                     girlsProgress.style.display = 'none';
+                    // Reset the completion flag when starting a new crawl
+                    crawlCompletedAndPopupShown = false;
                 }
             }
 
@@ -1457,6 +1567,9 @@
 
         async function startGirlsCrawler() {
             try {
+                // Reset completion flag when starting a new crawl
+                crawlCompletedAndPopupShown = false;
+
                 const response = await fetch('/api/start-girls-crawler', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
@@ -1473,6 +1586,64 @@
                 alert('Error starting girls crawler: ' + error.message);
             }
         }
+
+        // Global flag to track if crawl has completed and popup should be shown
+        let crawlCompletedAndPopupShown = false;
+
+        // Function to hide progress bar and show completion popup
+        function hideProgressBarAndShowCompletion() {
+            crawlCompletedAndPopupShown = true;
+
+            // Hide the progress bar after a short delay
+            setTimeout(() => {
+                const girlsProgress = document.getElementById('girls-progress');
+                if (girlsProgress) {
+                    girlsProgress.style.display = 'none';
+                }
+
+                // Show completion popup
+                showCrawlCompletionPopup();
+            }, 1000); // 1 second delay to let users see 100% completion
+        }
+
+        // Function to show the crawl completion popup
+        function showCrawlCompletionPopup() {
+            const popup = document.getElementById('crawl-completion-popup');
+            if (popup) {
+                popup.style.display = 'flex';
+            }
+        }
+
+        // Function to close the crawl completion popup
+        function closeCrawlCompletionPopup() {
+            const popup = document.getElementById('crawl-completion-popup');
+            if (popup) {
+                popup.style.display = 'none';
+            }
+            // Don't reset the flag here - keep progress bar hidden after popup is closed
+        }
+
+        // Close popup when clicking outside of it or pressing Escape
+        document.addEventListener('DOMContentLoaded', function() {
+            const popup = document.getElementById('crawl-completion-popup');
+            if (popup) {
+                popup.addEventListener('click', function(event) {
+                    if (event.target === popup) {
+                        closeCrawlCompletionPopup();
+                    }
+                });
+            }
+
+            // Close popup with Escape key
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    const popup = document.getElementById('crawl-completion-popup');
+                    if (popup && popup.style.display === 'flex') {
+                        closeCrawlCompletionPopup();
+                    }
+                }
+            });
+        });
 
 
 
