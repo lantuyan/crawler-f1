@@ -363,10 +363,27 @@ function checkCrawlingCompletion(totalUrlsProcessed, originalTotalUrls) {
 
 // ===== CONFIGURATION =====
 
+// Memory monitoring function
+function logMemoryUsage(context = '') {
+    const used = process.memoryUsage();
+    const formatMB = (bytes) => Math.round(bytes / 1024 / 1024 * 100) / 100;
+
+    console.log(`📊 Memory Usage ${context}:`);
+    console.log(`   RSS: ${formatMB(used.rss)} MB`);
+    console.log(`   Heap Used: ${formatMB(used.heapUsed)} MB`);
+    console.log(`   Heap Total: ${formatMB(used.heapTotal)} MB`);
+    console.log(`   External: ${formatMB(used.external)} MB`);
+
+    // Warning if memory usage is high
+    if (used.heapUsed > 3 * 1024 * 1024 * 1024) { // 3GB
+        console.log(`⚠️ HIGH MEMORY USAGE WARNING: ${formatMB(used.heapUsed)} MB`);
+    }
+}
+
 // Basic crawler configuration
 const PROXY_URL = 'http://proxybird:proxybird@155.254.39.107:6065';
 const DELAY_BETWEEN_REQUESTS = 100; // 100ms delay between requests
-const MAX_CONCURRENT_THREADS = 10; // Number of concurrent browser instances
+const MAX_CONCURRENT_THREADS = 5; // Reduced from 10 to 5 to prevent memory overflow
 const OUTPUT_FILE = 'detail-girls.csv';
 
 // Cloudflare-aware retry configuration
@@ -1799,7 +1816,7 @@ async function crawlProfiles() {
     page.setDefaultTimeout(10000);
     page.setDefaultNavigationTimeout(15000);
 
-    const results = [];
+    // Remove results array to prevent memory accumulation
     let processed = 0;
     let successfulWrites = 0;
     let duplicatesSkipped = 0;
@@ -1819,7 +1836,7 @@ async function crawlProfiles() {
 
             // Only save valid profile data to CSV
             if (data && isValidProfileData(data)) {
-                results.push(data);
+                // Don't store in memory array - write directly to CSV
 
                 // Write data to CSV immediately with duplicate checking
                 const writeSuccess = await saveDataToCSVRealtime(data);
@@ -1862,6 +1879,12 @@ async function crawlProfiles() {
             // Add delay between requests to be respectful
             await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
 
+            // Force garbage collection every 50 profiles to prevent memory buildup
+            if (processed % 50 === 0 && global.gc) {
+                global.gc();
+                console.log(`🧹 Garbage collection triggered at ${processed} profiles`);
+            }
+
         } catch (error) {
             console.error(`❌ Failed to process ${url}:`, error.message);
             console.log(`❌ Failed to process ${url} after all retries - not saved to CSV`);
@@ -1881,7 +1904,7 @@ async function crawlProfiles() {
 
     // Summary
     console.log(`\n=== Crawling Summary ===`);
-    console.log(`✓ Successfully crawled ${results.length} profiles`);
+    console.log(`✓ Successfully crawled ${processed} profiles`);
     console.log(`✓ Real-time CSV writing completed`);
     console.log(`✓ Successful writes: ${successfulWrites}`);
     console.log(`✓ Duplicates skipped: ${duplicatesSkipped}`);
@@ -1914,6 +1937,9 @@ async function crawlProfilesMultiThreaded() {
 
     console.log(`Using ${numThreads} threads, ~${urlsPerThread} URLs per thread`);
     console.log(`Real-time CSV writing to: ${OUTPUT_FILE}`);
+
+    // Log initial memory usage
+    logMemoryUsage('before starting multi-threaded crawl');
 
     // Initialize shared state for multi-threaded crawling
     initializeSharedState(testUrls.length);
@@ -2024,6 +2050,9 @@ async function crawlBatch(urls, threadId) {
 
         console.log(`Thread ${threadId}: Initialized, processing ${urls.length} URLs`);
 
+        // Log memory usage at thread start
+        logMemoryUsage(`Thread ${threadId} start`);
+
         for (const url of urls) {
             try {
                 const data = await extractProfileDataWithRetry(page, url, useProxy);
@@ -2073,6 +2102,13 @@ async function crawlBatch(urls, threadId) {
                     await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
                 }
 
+                // Force garbage collection every 25 profiles per thread to prevent memory buildup
+                if (processed % 25 === 0 && global.gc) {
+                    global.gc();
+                    console.log(`🧹 Thread ${threadId}: Garbage collection triggered at ${processed} profiles`);
+                    logMemoryUsage(`Thread ${threadId} after GC`);
+                }
+
             } catch (error) {
                 console.error(`❌ Thread ${threadId}: Failed to process ${url}:`, error.message);
                 console.log(`❌ Thread ${threadId}: Failed to process ${url} after all retries - not saved to CSV`);
@@ -2092,8 +2128,23 @@ async function crawlBatch(urls, threadId) {
         return { processed, successful, duplicates, failed };
     } finally {
         if (browser) {
-            await browser.close();
-            console.log(`Thread ${threadId}: Browser closed`);
+            try {
+                // Close all pages first
+                const pages = await browser.pages();
+                await Promise.all(pages.map(page => page.close().catch(() => {})));
+
+                // Then close browser
+                await browser.close();
+                console.log(`Thread ${threadId}: Browser and all pages closed`);
+
+                // Force garbage collection after browser cleanup
+                if (global.gc) {
+                    global.gc();
+                    console.log(`Thread ${threadId}: Memory cleanup completed`);
+                }
+            } catch (error) {
+                console.log(`Thread ${threadId}: Error during browser cleanup:`, error.message);
+            }
         }
     }
 }

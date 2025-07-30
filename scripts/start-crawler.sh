@@ -98,6 +98,9 @@ fi
 # Function to start with different methods
 start_with_node() {
     log "Starting application with Node.js..."
+    # Set Node.js memory limit to prevent heap overflow
+    export NODE_OPTIONS="--max-old-space-size=16384 --max-semi-space-size=1024"
+    log "Node.js memory limit set to 16GB with optimized garbage collection"
     exec node server.js
 }
 
@@ -113,8 +116,12 @@ start_with_pm2() {
     pm2 stop fgirl-crawler 2>/dev/null || true
     pm2 delete fgirl-crawler 2>/dev/null || true
     
-    # Start with PM2
-    pm2 start server.js --name "fgirl-crawler" --max-memory-restart 14G
+    # Start with PM2 with memory optimization
+    pm2 start server.js --name "fgirl-crawler" \
+        --max-memory-restart 14G \
+        --node-args="--max-old-space-size=16384 --max-semi-space-size=1024 --optimize-for-size" \
+        --kill-timeout 30000 \
+        --restart-delay 5000
     pm2 save
     
     log "Application started with PM2"
@@ -205,9 +212,12 @@ case $START_METHOD in
     "node")
         if [ "$DAEMON_MODE" = true ]; then
             log "Starting application in daemon mode..."
+            # Set Node.js memory limit for daemon mode
+            export NODE_OPTIONS="--max-old-space-size=16384 --max-semi-space-size=1024"
             nohup node server.js > logs/application.log 2>&1 &
             echo $! > logs/app.pid
             log "Application started in background. PID: $(cat logs/app.pid)"
+            log "Node.js memory limit set to 16GB with optimized garbage collection"
             log "Logs: tail -f logs/application.log"
         else
             start_with_node
