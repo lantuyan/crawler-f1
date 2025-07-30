@@ -87,7 +87,8 @@ function trimLogs(logsArray, maxEntries = MEMORY_CONFIG.MAX_LOG_ENTRIES) {
     if (logsArray.length > maxEntries) {
         const excess = logsArray.length - maxEntries;
         logsArray.splice(0, excess);
-        console.log(`🧹 Trimmed ${excess} old log entries to prevent memory leak`);
+        // Use process.stdout.write to avoid recursion with overridden console.log
+        process.stdout.write(`🧹 Trimmed ${excess} old log entries to prevent memory leak\n`);
         return excess;
     }
     return 0;
@@ -105,7 +106,8 @@ function performLogCleanup() {
     const girlsTrimmed = trimLogs(crawlerState.girls.logs);
 
     if (categoriesTrimmed > 0 || girlsTrimmed > 0) {
-        console.log(`🧹 Log cleanup: Trimmed ${categoriesTrimmed} categories logs, ${girlsTrimmed} girls logs`);
+        // Use process.stdout.write to avoid recursion with overridden console.log
+        process.stdout.write(`🧹 Log cleanup: Trimmed ${categoriesTrimmed} categories logs, ${girlsTrimmed} girls logs\n`);
     }
 }
 
@@ -124,7 +126,8 @@ function countCSVLines(filePath) {
         const lineCount = data.split('\n').filter(line => line.trim()).length;
         return Math.max(0, lineCount - 1); // Exclude header
     } catch (error) {
-        console.error(`Error counting CSV lines in ${filePath}:`, error);
+        // Use process.stderr.write to avoid recursion with overridden console.log
+        process.stderr.write(`Error counting CSV lines in ${filePath}: ${error.message}\n`);
         return 0;
     }
 }
@@ -145,7 +148,8 @@ function readCSVHeader(filePath) {
         const firstLine = content.split('\n')[0];
         return firstLine.trim();
     } catch (error) {
-        console.error(`Error reading CSV header from ${filePath}:`, error);
+        // Use process.stderr.write to avoid recursion with overridden console.log
+        process.stderr.write(`Error reading CSV header from ${filePath}: ${error.message}\n`);
         return null;
     }
 }
@@ -170,12 +174,12 @@ function getMemoryUsage() {
 function performMemoryCleanup() {
     const memUsage = getMemoryUsage();
 
-    // Log memory usage
-    console.log(`🧠 Memory Usage: ${memUsage.heapUsed}MB/${memUsage.heapTotal}MB (${Math.round(memUsage.heapUsedPercent * 100)}%)`);
+    // Log memory usage using process.stdout.write to avoid recursion
+    process.stdout.write(`🧠 Memory Usage: ${memUsage.heapUsed}MB/${memUsage.heapTotal}MB (${Math.round(memUsage.heapUsedPercent * 100)}%)\n`);
 
     // Perform aggressive cleanup if memory usage is high
     if (memUsage.heapUsedPercent > MEMORY_CONFIG.MEMORY_CRITICAL_THRESHOLD) {
-        console.log('🚨 Critical memory usage detected! Performing emergency cleanup...');
+        process.stdout.write('🚨 Critical memory usage detected! Performing emergency cleanup...\n');
 
         // Trim logs more aggressively
         const categoriesTrimmed = trimLogs(crawlerState.categories.logs, 100);
@@ -184,22 +188,22 @@ function performMemoryCleanup() {
         // Clean up SSE clients
         cleanupSSEClients();
 
-        console.log(`🧹 Emergency cleanup: Trimmed ${categoriesTrimmed + girlsTrimmed} log entries, cleaned SSE clients`);
+        process.stdout.write(`🧹 Emergency cleanup: Trimmed ${categoriesTrimmed + girlsTrimmed} log entries, cleaned SSE clients\n`);
 
         // Force garbage collection if available
         if (global.gc) {
             global.gc();
-            console.log('🗑️ Forced garbage collection');
+            process.stdout.write('🗑️ Forced garbage collection\n');
         }
 
     } else if (memUsage.heapUsedPercent > MEMORY_CONFIG.MEMORY_WARNING_THRESHOLD) {
-        console.log('⚠️ High memory usage detected. Performing routine cleanup...');
+        process.stdout.write('⚠️ High memory usage detected. Performing routine cleanup...\n');
         performLogCleanup();
         cleanupSSEClients();
 
     } else if (memUsage.heapUsedPercent > MEMORY_CONFIG.FORCE_GC_THRESHOLD && global.gc) {
         global.gc();
-        console.log('🗑️ Preventive garbage collection');
+        process.stdout.write('🗑️ Preventive garbage collection\n');
     }
 
     return memUsage;
@@ -346,6 +350,24 @@ app.get('/api/memory-usage', requireAuth, (req, res) => {
         status: memUsage.heapUsedPercent > MEMORY_CONFIG.MEMORY_CRITICAL_THRESHOLD ? 'critical' :
                 memUsage.heapUsedPercent > MEMORY_CONFIG.MEMORY_WARNING_THRESHOLD ? 'warning' : 'normal'
     });
+});
+
+// Chrome process cleanup API endpoint
+app.post('/api/cleanup-chrome', requireAuth, async (req, res) => {
+    try {
+        const { killAllChromeProcesses } = require('./crawler-girl');
+        await killAllChromeProcesses();
+
+        res.json({
+            success: true,
+            message: 'Chrome processes cleaned up successfully'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 });
 
 
@@ -816,7 +838,8 @@ function cleanupSSEClients() {
     });
 
     if (clientsToRemove.length > 0) {
-        console.log(`🧹 Cleaned up ${clientsToRemove.length} disconnected SSE clients and their heartbeat intervals`);
+        // Use process.stdout.write to avoid recursion with overridden console.log
+        process.stdout.write(`🧹 Cleaned up ${clientsToRemove.length} disconnected SSE clients and their heartbeat intervals\n`);
     }
 }
 
@@ -1172,6 +1195,14 @@ async function startCategoriesCrawler() {
             broadcastUpdate('complete', { type: 'categories' });
         }
 
+        // Additional cleanup to ensure all Chrome processes are killed
+        try {
+            const { killAllChromeProcesses } = require('./crawler-girl');
+            await killAllChromeProcesses();
+        } catch (cleanupError) {
+            console.log('Chrome cleanup completed with minor issues:', cleanupError.message);
+        }
+
     } catch (error) {
         console.error('Categories crawler error:', error);
         crawlerState.categories.isRunning = false;
@@ -1180,6 +1211,14 @@ async function startCategoriesCrawler() {
             message: `Error: ${error.message}`
         });
         broadcastUpdate('error', { type: 'categories', error: error.message });
+
+        // Cleanup Chrome processes even on error
+        try {
+            const { killAllChromeProcesses } = require('./crawler-girl');
+            await killAllChromeProcesses();
+        } catch (cleanupError) {
+            console.log('Chrome cleanup completed with minor issues:', cleanupError.message);
+        }
     }
 }
 
@@ -1221,6 +1260,14 @@ async function startGirlsCrawler() {
 
         // Restore console.log
         console.log = originalLog;
+
+        // Additional cleanup to ensure all Chrome processes are killed
+        try {
+            const { killAllChromeProcesses } = require('./crawler-girl');
+            await killAllChromeProcesses();
+        } catch (cleanupError) {
+            console.log('Chrome cleanup completed with minor issues:', cleanupError.message);
+        }
 
         crawlerState.girls.isRunning = false;
         crawlerState.girls.progress = 100;
@@ -1480,6 +1527,14 @@ async function runGirlsCrawlerSequential() {
         // Restore console.log
         console.log = originalLog;
 
+        // Additional cleanup to ensure all Chrome processes are killed
+        try {
+            const { killAllChromeProcesses } = require('./crawler-girl');
+            await killAllChromeProcesses();
+        } catch (cleanupError) {
+            console.log('Chrome cleanup completed with minor issues:', cleanupError.message);
+        }
+
         return result;
 
     } catch (error) {
@@ -1489,6 +1544,15 @@ async function runGirlsCrawlerSequential() {
             crawlerGirlModule.updateGlobalProcessedProfiles = originalUpdateGlobalProcessedProfiles;
         }
         console.log = originalLog;
+
+        // Cleanup Chrome processes even on error
+        try {
+            const { killAllChromeProcesses } = require('./crawler-girl');
+            await killAllChromeProcesses();
+        } catch (cleanupError) {
+            console.log('Chrome cleanup completed with minor issues:', cleanupError.message);
+        }
+
         throw error;
     }
 }
@@ -1496,7 +1560,8 @@ async function runGirlsCrawlerSequential() {
 const PORT = process.env.PORT || 3000;
 // Graceful shutdown handler
 function gracefulShutdown(signal) {
-    console.log(`\n🛑 Received ${signal}. Performing graceful shutdown...`);
+    // Use process.stdout.write to avoid recursion with overridden console.log
+    process.stdout.write(`\n🛑 Received ${signal}. Performing graceful shutdown...\n`);
 
     // Clear all intervals
     if (typeof logCleanupInterval !== 'undefined') clearInterval(logCleanupInterval);
@@ -1517,7 +1582,7 @@ function gracefulShutdown(signal) {
         clearInterval(interval);
     });
 
-    console.log('🧹 Cleanup completed. Exiting...');
+    process.stdout.write('🧹 Cleanup completed. Exiting...\n');
     process.exit(0);
 }
 

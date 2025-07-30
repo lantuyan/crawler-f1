@@ -446,9 +446,81 @@ function clearDetailGirlsCsv() {
 // Global variables for real-time CSV writing
 let csvWriteLock = false; // Thread-safe CSV writing lock
 
+// Chrome process management utilities
+async function killAllChromeProcesses() {
+    try {
+        const { exec } = require('child_process');
+        const os = require('os');
+        const platform = os.platform();
+
+        let killCommand;
+        if (platform === 'linux') {
+            // Kill all Chrome/Chromium processes on Linux
+            killCommand = 'pkill -f "chrome|chromium" || true';
+        } else if (platform === 'darwin') {
+            // Kill all Chrome processes on macOS
+            killCommand = 'pkill -f "Google Chrome|Chromium" || true';
+        } else if (platform === 'win32') {
+            // Kill all Chrome processes on Windows
+            killCommand = 'taskkill /F /IM chrome.exe /T 2>nul || taskkill /F /IM chromium.exe /T 2>nul || true';
+        } else {
+            console.log('⚠️ Unknown platform for Chrome process cleanup');
+            return;
+        }
+
+        await new Promise((resolve) => {
+            exec(killCommand, (error, stdout, stderr) => {
+                if (error && !error.message.includes('No such process')) {
+                    console.log('Chrome process cleanup completed with minor issues');
+                } else {
+                    console.log('🧹 Chrome processes cleaned up');
+                }
+                resolve();
+            });
+        });
+
+        // Wait a moment for processes to fully terminate
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+    } catch (error) {
+        console.log('Chrome process cleanup completed with issues:', error.message);
+    }
+}
+
+async function safeBrowserClose(browser) {
+    if (!browser) return;
+
+    try {
+        // Close all pages first
+        const pages = await browser.pages();
+        for (const page of pages) {
+            try {
+                if (!page.isClosed()) {
+                    await page.close();
+                }
+            } catch (e) {
+                // Page might already be closed
+            }
+        }
+
+        // Close browser
+        await browser.close();
+        console.log('🔒 Browser closed safely');
+
+        // Wait a moment for cleanup
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+    } catch (error) {
+        console.log('Browser close completed with issues:', error.message);
+    }
+}
+
 // Browser initialization with proxy support (based on crawler-categories.js)
 async function initBrowser() {
     console.log('Initializing browser with proxy...');
+
+    // Kill any existing Chrome processes first
+    await killAllChromeProcesses();
 
     // Check for Chrome executable paths (Linux and macOS)
     const os = require('os');
@@ -1896,7 +1968,7 @@ async function crawlProfiles() {
         }
     }
 
-    await browser.close();
+    await safeBrowserClose(browser);
 
     // Final completion check - ensure progress reaches 100%
     const totalUrlsProcessed = processed + failedProfiles;
@@ -2115,7 +2187,7 @@ async function crawlBatch(urls, threadId) {
         return { processed, successful, duplicates, failed };
     } finally {
         if (browser) {
-            await browser.close();
+            await safeBrowserClose(browser);
             console.log(`Thread ${threadId}: Browser closed`);
         }
     }
@@ -2203,6 +2275,26 @@ function logCrawlingStats() {
     }
 }
 
+// Cleanup function for web interface
+async function cleanupAfterCrawling() {
+    try {
+        console.log('🧹 Starting post-crawl cleanup...');
+
+        // Kill any remaining Chrome processes
+        await killAllChromeProcesses();
+
+        // Force garbage collection if available
+        if (global.gc) {
+            global.gc();
+            console.log('🗑️ Forced garbage collection');
+        }
+
+        console.log('✅ Post-crawl cleanup completed');
+    } catch (error) {
+        console.log('⚠️ Cleanup completed with minor issues:', error.message);
+    }
+}
+
 // Web interface compatible function
 async function runGirlsCrawlerForWeb() {
     console.log('=== Fgirl Girls Crawler Started (Web Interface) ===');
@@ -2237,6 +2329,9 @@ async function runGirlsCrawlerForWeb() {
         console.log(`\n✅ Girls crawler completed in ${duration} seconds`);
         console.log(`📁 Results saved to: ${OUTPUT_FILE}`);
 
+        // Perform cleanup after successful crawling
+        await cleanupAfterCrawling();
+
         return {
             success: true,
             duration: duration,
@@ -2246,6 +2341,9 @@ async function runGirlsCrawlerForWeb() {
 
     } catch (error) {
         console.error(`Error in web girls crawler:`, error);
+
+        // Perform cleanup even if there was an error
+        await cleanupAfterCrawling();
         throw error;
     }
 }
@@ -2270,6 +2368,9 @@ module.exports = {
     determineBlockType, // Block type detection function
     clearDetailGirlsCsv, // CSV clearing function
     countCSVLines, // Memory-efficient CSV line counting
+    killAllChromeProcesses, // Chrome process cleanup
+    safeBrowserClose, // Safe browser closing
+    cleanupAfterCrawling, // Post-crawl cleanup
 
     // Real-time state management functions
     initializeGlobalState, // Initialize global state reference

@@ -1129,8 +1129,72 @@ class FgirlCategoryCrawler {
 
     async cleanup() {
         if (this.browser) {
-            await this.browser.close();
-            console.log('Browser closed');
+            try {
+                // Close all pages first
+                const pages = await this.browser.pages();
+                for (const page of pages) {
+                    try {
+                        if (!page.isClosed()) {
+                            await page.close();
+                        }
+                    } catch (e) {
+                        // Page might already be closed
+                    }
+                }
+
+                // Close browser
+                await this.browser.close();
+                console.log('🔒 Browser closed safely');
+
+                // Wait a moment for cleanup
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+            } catch (error) {
+                console.log('Browser close completed with issues:', error.message);
+            }
+        }
+
+        // Kill any remaining Chrome processes
+        await this.killAllChromeProcesses();
+    }
+
+    async killAllChromeProcesses() {
+        try {
+            const { exec } = require('child_process');
+            const os = require('os');
+            const platform = os.platform();
+
+            let killCommand;
+            if (platform === 'linux') {
+                // Kill all Chrome/Chromium processes on Linux
+                killCommand = 'pkill -f "chrome|chromium" || true';
+            } else if (platform === 'darwin') {
+                // Kill all Chrome processes on macOS
+                killCommand = 'pkill -f "Google Chrome|Chromium" || true';
+            } else if (platform === 'win32') {
+                // Kill all Chrome processes on Windows
+                killCommand = 'taskkill /F /IM chrome.exe /T 2>nul || taskkill /F /IM chromium.exe /T 2>nul || true';
+            } else {
+                console.log('⚠️ Unknown platform for Chrome process cleanup');
+                return;
+            }
+
+            await new Promise((resolve) => {
+                exec(killCommand, (error, stdout, stderr) => {
+                    if (error && !error.message.includes('No such process')) {
+                        console.log('Chrome process cleanup completed with minor issues');
+                    } else {
+                        console.log('🧹 Chrome processes cleaned up');
+                    }
+                    resolve();
+                });
+            });
+
+            // Wait a moment for processes to fully terminate
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+        } catch (error) {
+            console.log('Chrome process cleanup completed with issues:', error.message);
         }
     }
 }
