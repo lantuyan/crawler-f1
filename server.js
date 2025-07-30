@@ -1,7 +1,6 @@
 const express = require('express');
 const session = require('express-session');
 const http = require('http');
-const socketIo = require('socket.io');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
@@ -14,16 +13,10 @@ const { runGirlsCrawlerForWeb } = require('./crawler-girl');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
 
 // Security middleware
 app.use(helmet({
-    contentSecurityPolicy: false // Disable CSP for Socket.io
+    contentSecurityPolicy: false // Disable CSP for SSE
 }));
 app.use(cors());
 
@@ -321,6 +314,108 @@ app.post('/api/stop-girls-crawler', requireAuth, async (req, res) => {
     }
 });
 
+// API endpoint for detail-girls data table
+app.get('/api/detail-girls-data', requireAuth, (req, res) => {
+    try {
+        const filePath = path.join(__dirname, 'detail-girls.csv');
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+            return res.json({
+                success: true,
+                data: [],
+                total: 0,
+                page: parseInt(req.query.page) || 1,
+                limit: parseInt(req.query.limit) || 50,
+                message: 'No data available. Run the girls crawler first.'
+            });
+        }
+
+        // Read and parse CSV file
+        const csvContent = fs.readFileSync(filePath, 'utf8');
+        const lines = csvContent.trim().split('\n');
+
+        if (lines.length <= 1) {
+            return res.json({
+                success: true,
+                data: [],
+                total: 0,
+                page: parseInt(req.query.page) || 1,
+                limit: parseInt(req.query.limit) || 50,
+                message: 'No data available. CSV file is empty.'
+            });
+        }
+
+        // Parse header and data
+        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        const dataLines = lines.slice(1).filter(line => line.trim() !== '');
+
+        // Convert CSV rows to objects
+        const allData = dataLines.map((line, index) => {
+            const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
+            const row = { id: index + 1 };
+            headers.forEach((header, i) => {
+                row[header] = values[i] || '';
+            });
+            return row;
+        });
+
+        // Apply search filter if provided
+        let filteredData = allData;
+        const search = req.query.search;
+        if (search && search.trim() !== '') {
+            const searchTerm = search.toLowerCase();
+            filteredData = allData.filter(row =>
+                Object.values(row).some(value =>
+                    String(value).toLowerCase().includes(searchTerm)
+                )
+            );
+        }
+
+        // Apply sorting if provided
+        const sortBy = req.query.sortBy;
+        const sortOrder = req.query.sortOrder || 'asc';
+        if (sortBy && headers.includes(sortBy)) {
+            filteredData.sort((a, b) => {
+                const aVal = String(a[sortBy]).toLowerCase();
+                const bVal = String(b[sortBy]).toLowerCase();
+                if (sortOrder === 'desc') {
+                    return bVal.localeCompare(aVal);
+                }
+                return aVal.localeCompare(bVal);
+            });
+        }
+
+        // Apply pagination
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 50));
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + limit;
+        const paginatedData = filteredData.slice(startIndex, endIndex);
+
+        res.json({
+            success: true,
+            data: paginatedData,
+            total: filteredData.length,
+            totalRecords: allData.length,
+            page: page,
+            limit: limit,
+            totalPages: Math.ceil(filteredData.length / limit),
+            headers: headers,
+            lastModified: fs.statSync(filePath).mtime
+        });
+
+    } catch (error) {
+        console.error('Error fetching detail-girls data:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch data',
+            data: [],
+            total: 0
+        });
+    }
+});
+
 // Download endpoints
 app.get('/api/download/detail-girls-csv', requireAuth, (req, res) => {
     try {
@@ -440,34 +535,127 @@ app.post('/api/sync-csv-data', requireAuth, async (req, res) => {
     }
 });
 
-// Socket.io connection handling
-io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
-    
-    // Send current crawler state to new client
-    socket.emit('crawler-state-update', crawlerState);
-    
-    socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
+// Server-Sent Events (SSE) connection handling
+const sseClients = new Set();
+
+// SSE endpoint for real-time updates
+app.get('/api/events', requireAuth, (req, res) => {
+    // Set SSE headers
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control'
     });
+
+    // Send initial connection event
+    res.write(`event: connected\n`);
+    res.write(`data: ${JSON.stringify({ timestamp: new Date().toISOString(), message: 'Connected to server' })}\n\n`);
+
+    // Send current crawler state immediately
+    res.write(`event: crawler-state-update\n`);
+    res.write(`data: ${JSON.stringify(crawlerState)}\n\n`);
+
+    // Add client to the set
+    sseClients.add(res);
+    console.log(`SSE client connected. Total clients: ${sseClients.size}`);
+
+    // Handle client disconnect
+    req.on('close', () => {
+        sseClients.delete(res);
+        console.log(`SSE client disconnected. Total clients: ${sseClients.size}`);
+    });
+
+    req.on('error', (err) => {
+        console.error('SSE client error:', err);
+        sseClients.delete(res);
+    });
+
+    // Send periodic heartbeat to keep connection alive
+    const heartbeat = setInterval(() => {
+        if (sseClients.has(res)) {
+            try {
+                res.write(`event: heartbeat\n`);
+                res.write(`data: ${JSON.stringify({ timestamp: new Date().toISOString() })}\n\n`);
+            } catch (error) {
+                console.error('Error sending heartbeat:', error);
+                clearInterval(heartbeat);
+                sseClients.delete(res);
+            }
+        } else {
+            clearInterval(heartbeat);
+        }
+    }, 30000); // Send heartbeat every 30 seconds
 });
 
-// Helper function to broadcast updates
+// Helper function to broadcast updates via SSE
 function broadcastUpdate(type, data) {
-    io.emit('crawler-state-update', crawlerState);
-    if (type === 'log') {
-        io.emit('crawler-log', data);
-    } else if (type === 'phase-change') {
-        io.emit('phase-change', data);
-    } else if (type === 'complete') {
-        io.emit('complete', data);
-    } else if (type === 'error') {
-        io.emit('error', data);
-    } else if (type === 'stopped') {
-        io.emit('stopped', data);
-    }
-    // For 'progress' type, we just need the state update which is already emitted above
+    const eventData = {
+        type,
+        timestamp: new Date().toISOString(),
+        crawlerState,
+        data
+    };
+
+    // Send to all connected SSE clients
+    sseClients.forEach(client => {
+        try {
+            // Always send crawler state update
+            client.write(`event: crawler-state-update\n`);
+            client.write(`data: ${JSON.stringify(crawlerState)}\n\n`);
+
+            // Send specific event type
+            if (type === 'log') {
+                client.write(`event: crawler-log\n`);
+                client.write(`data: ${JSON.stringify(data)}\n\n`);
+            } else if (type === 'phase-change') {
+                client.write(`event: phase-change\n`);
+                client.write(`data: ${JSON.stringify(data)}\n\n`);
+            } else if (type === 'complete') {
+                client.write(`event: complete\n`);
+                client.write(`data: ${JSON.stringify(data)}\n\n`);
+            } else if (type === 'error') {
+                client.write(`event: error\n`);
+                client.write(`data: ${JSON.stringify(data)}\n\n`);
+            } else if (type === 'stopped') {
+                client.write(`event: stopped\n`);
+                client.write(`data: ${JSON.stringify(data)}\n\n`);
+            }
+        } catch (error) {
+            // Use process.stdout.write to avoid infinite recursion with overridden console.log
+            process.stdout.write(`Error broadcasting to SSE client: ${error.message}\n`);
+            sseClients.delete(client);
+        }
+    });
+
+    // Use process.stdout.write to avoid infinite recursion with overridden console.log
+    process.stdout.write(`Broadcasted ${type} update to ${sseClients.size} SSE clients\n`);
 }
+
+// Cleanup function for SSE clients
+function cleanupSSEClients() {
+    const clientsToRemove = [];
+    sseClients.forEach(client => {
+        try {
+            // Test if client is still connected by writing a small test
+            client.write('');
+        } catch (error) {
+            clientsToRemove.push(client);
+        }
+    });
+
+    clientsToRemove.forEach(client => {
+        sseClients.delete(client);
+    });
+
+    if (clientsToRemove.length > 0) {
+        console.log(`Cleaned up ${clientsToRemove.length} disconnected SSE clients`);
+    }
+}
+
+// Periodic cleanup of disconnected SSE clients
+setInterval(cleanupSSEClients, 60000); // Every minute
 
 // Helper function to update categories progress based on girls processed
 function updateCategoriesProgress() {
@@ -765,7 +953,10 @@ async function startCategoriesCrawler() {
                 }
             }
 
-            broadcastUpdate('log', { type: 'categories', message });
+            // Use setTimeout to avoid recursion issues with broadcastUpdate
+            setTimeout(() => {
+                broadcastUpdate('log', { type: 'categories', message });
+            }, 0);
             originalLog(...args);
         };
 
@@ -848,7 +1039,10 @@ async function startGirlsCrawler() {
             // The crawler will update crawlerState.girls.processedProfiles and progress directly
             // No need to extract from logs anymore since we have real-time updates
 
-            broadcastUpdate('log', { type: 'girls', message });
+            // Use setTimeout to avoid recursion issues with broadcastUpdate
+            setTimeout(() => {
+                broadcastUpdate('log', { type: 'girls', message });
+            }, 0);
             originalLog(...args);
         };
 
@@ -1015,12 +1209,17 @@ async function runCategoriesCrawlerSequential() {
                     crawlerState.girls.progress = categoriesProgress;
 
                     // Broadcast the progress update to all connected clients
-                    broadcastUpdate('progress', { type: 'girls' });
+                    setTimeout(() => {
+                        broadcastUpdate('progress', { type: 'girls' });
+                    }, 0);
                 }
             }
         }
 
-        broadcastUpdate('log', { type: 'girls', message: `[Categories] ${message}` });
+        // Use setTimeout to avoid recursion issues with broadcastUpdate
+        setTimeout(() => {
+            broadcastUpdate('log', { type: 'girls', message: `[Categories] ${message}` });
+        }, 0);
         originalLog(...args);
     };
 
@@ -1060,7 +1259,10 @@ async function runGirlsCrawlerSequential() {
             message: `[Girls] ${message}`
         });
 
-        broadcastUpdate('log', { type: 'girls', message: `[Girls] ${message}` });
+        // Use setTimeout to avoid recursion issues with broadcastUpdate
+        setTimeout(() => {
+            broadcastUpdate('log', { type: 'girls', message: `[Girls] ${message}` });
+        }, 0);
         originalLog(...args);
     };
 
@@ -1098,7 +1300,9 @@ async function runGirlsCrawlerSequential() {
                 console.log(`📊 Sequential update: Processed Profiles = ${newProcessed}/${crawlerState.girls.totalProfiles} (${rawProgress}% → ${crawlerState.girls.progress}%)`);
 
                 // Broadcast the state update to all connected clients
-                broadcastUpdate('progress', { type: 'girls' });
+                setTimeout(() => {
+                    broadcastUpdate('progress', { type: 'girls' });
+                }, 0);
             }
         };
 

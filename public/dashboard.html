@@ -339,7 +339,7 @@
             100% { opacity: 1; }
         }
 
-        .logs-section {
+        .data-table-section {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(20px);
             padding: 2.5rem;
@@ -348,6 +348,180 @@
             margin-top: 2rem;
             border: 1px solid rgba(255, 255, 255, 0.2);
             animation: slideInUp 1s ease-out;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .data-table-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .data-table-container {
+            background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
+            border-radius: 15px;
+            padding: 1.5rem;
+            max-height: 500px;
+            overflow: auto;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .table-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .search-container {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .search-container input {
+            padding: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            min-width: 200px;
+            font-size: 0.9rem;
+        }
+
+        .search-container input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .search-container button {
+            padding: 0.75rem 1.25rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .search-container button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .pagination-info {
+            color: #ccc;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 0.75rem 0.5rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: #e0e0e0;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .data-table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-weight: bold;
+            color: #fff;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+        }
+
+        .data-table th.sortable {
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.3s;
+        }
+
+        .data-table th.sortable:hover {
+            background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+            transform: translateY(-1px);
+        }
+
+        .data-table th.sorted {
+            background: linear-gradient(135deg, #4c51bf 0%, #553c9a 100%);
+        }
+
+        .data-table tr:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .pagination-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .pagination-controls button {
+            padding: 0.75rem 1.25rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .pagination-controls button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .pagination-controls button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #6c757d;
+        }
+
+        .no-data-message {
+            text-align: center;
+            padding: 3rem;
+            color: #ccc;
+            font-size: 1.1rem;
+        }
+
+        .logs-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            margin-bottom: 2rem;
             transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
@@ -719,6 +893,30 @@
             </div>
         </div>
 
+        <!-- Real-time Data Table Section -->
+        <div class="data-table-section">
+            <h2 style="margin-bottom: 1rem;">📊 Girls Results - Real-time Data</h2>
+            <div class="data-table-stats" id="data-table-stats">
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Total Records</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Filtered Results</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">-</div>
+                    <div class="stat-label">Last Updated</div>
+                </div>
+            </div>
+            <div class="data-table-container" id="data-table-container">
+                <div class="no-data-message">
+                    <p>No data available. Run the girls crawler to see results here.</p>
+                </div>
+            </div>
+        </div>
+
         <!-- Logs Section -->
         <div class="logs-section">
             <h2 style="margin-bottom: 1rem;">📝 Live Logs</h2>
@@ -730,91 +928,357 @@
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Initialize Socket.io connection
-        const socket = io();
-        
-        // Connection status handling
-        socket.on('connect', () => {
-            document.getElementById('connection-indicator').classList.remove('disconnected');
-            document.getElementById('connection-status').textContent = 'Connected';
-            addLog('System', 'Connected to server');
-        });
-        
-        socket.on('disconnect', () => {
-            document.getElementById('connection-indicator').classList.add('disconnected');
-            document.getElementById('connection-status').textContent = 'Disconnected';
-            addLog('System', 'Disconnected from server');
-        });
-        
-        // Crawler state updates
-        socket.on('crawler-state-update', (state) => {
-            updateCrawlerState(state);
-        });
-        
-        // Log updates
-        socket.on('crawler-log', (data) => {
-            addLog(data.type, data.message);
-        });
+        // SSE Connection Management
+        let eventSource = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 10;
+        let reconnectTimeout = null;
+        let isManualDisconnect = false;
 
-        // Phase change updates for sequential crawler
-        socket.on('phase-change', (data) => {
-            if (data.type === 'girls') {
-                updatePhaseIndicator(data.phase);
+        // Initialize SSE connection
+        function initializeSSE() {
+            if (eventSource) {
+                eventSource.close();
             }
-        });
 
-        // Handle crawler stopped event
-        socket.on('stopped', (data) => {
-            if (data.type === 'categories') {
-                // Reset toggle button state but keep progress visible
-                const toggleBtn = document.getElementById('categories-toggle-btn');
-                const progressContainer = document.getElementById('categories-progress');
-                const statusIndicator = document.getElementById('categories-status');
+            try {
+                eventSource = new EventSource('/api/events');
 
-                toggleBtn.disabled = false;
-                toggleBtn.textContent = 'Run Crawl Categories';
-                toggleBtn.style.background = '';
+                // Connection opened
+                eventSource.onopen = function(event) {
+                    console.log('SSE connection opened');
+                    document.getElementById('connection-indicator').classList.remove('disconnected');
+                    document.getElementById('connection-status').textContent = 'Connected';
+                    addLog('System', 'Connected to server');
+                    reconnectAttempts = 0;
+                };
 
-                // Keep progress information visible after stopping
-                if (progressContainer) {
-                    progressContainer.style.display = 'block';
+                // Handle connection event
+                eventSource.addEventListener('connected', function(event) {
+                    const data = JSON.parse(event.data);
+                    console.log('SSE connected:', data);
+                });
+
+                // Handle heartbeat
+                eventSource.addEventListener('heartbeat', function(event) {
+                    // Silent heartbeat handling
+                    console.log('SSE heartbeat received');
+                });
+
+                // Crawler state updates
+                eventSource.addEventListener('crawler-state-update', function(event) {
+                    const state = JSON.parse(event.data);
+                    updateCrawlerState(state);
+                });
+
+                // Log updates
+                eventSource.addEventListener('crawler-log', function(event) {
+                    const data = JSON.parse(event.data);
+                    addLog(data.type, data.message);
+                });
+
+                // Phase change updates for sequential crawler
+                eventSource.addEventListener('phase-change', function(event) {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'girls') {
+                        updatePhaseIndicator(data.phase);
+                    }
+                });
+
+                // Handle crawler stopped event
+                eventSource.addEventListener('stopped', function(event) {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'categories') {
+                        // Reset toggle button state but keep progress visible
+                        const toggleBtn = document.getElementById('categories-toggle-btn');
+                        const progressContainer = document.getElementById('categories-progress');
+                        const statusIndicator = document.getElementById('categories-status');
+
+                        toggleBtn.disabled = false;
+                        toggleBtn.textContent = 'Run Crawl Categories';
+                        toggleBtn.style.background = '';
+
+                        // Keep progress information visible after stopping
+                        if (progressContainer) {
+                            progressContainer.style.display = 'block';
+                        }
+
+                        // Show status indicator that crawler was stopped
+                        if (statusIndicator) {
+                            statusIndicator.style.display = 'block';
+                        }
+
+                        addLog('System', 'Categories crawler stopped successfully');
+                    } else if (data.type === 'girls') {
+                        addLog('System', 'Girls crawler stopped');
+                    }
+                });
+
+                // Handle crawler completion event
+                eventSource.addEventListener('complete', function(event) {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'girls') {
+                        addLog('System', 'Sequential crawler completed successfully!');
+                    } else if (data.type === 'categories') {
+                        addLog('System', 'Categories crawler completed successfully!');
+                    }
+                });
+
+                // Handle crawler error event
+                eventSource.addEventListener('error', function(event) {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'girls') {
+                        addLog('Error', `Girls crawler error: ${data.error || 'Unknown error'}`);
+                    } else if (data.type === 'categories') {
+                        addLog('Error', `Categories crawler error: ${data.error || 'Unknown error'}`);
+                    }
+                });
+
+                // Handle connection errors
+                eventSource.onerror = function(event) {
+                    console.error('SSE connection error:', event);
+                    document.getElementById('connection-indicator').classList.add('disconnected');
+                    document.getElementById('connection-status').textContent = 'Disconnected';
+
+                    if (!isManualDisconnect) {
+                        addLog('System', 'Connection lost. Attempting to reconnect...');
+                        scheduleReconnect();
+                    }
+                };
+
+            } catch (error) {
+                console.error('Error initializing SSE:', error);
+                addLog('System', 'Failed to establish connection. Retrying...');
+                scheduleReconnect();
+            }
+        }
+
+        // Schedule reconnection with exponential backoff
+        function scheduleReconnect() {
+            if (isManualDisconnect || reconnectAttempts >= maxReconnectAttempts) {
+                if (reconnectAttempts >= maxReconnectAttempts) {
+                    addLog('System', 'Maximum reconnection attempts reached. Please refresh the page.');
+                }
+                return;
+            }
+
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // Max 30 seconds
+            reconnectAttempts++;
+
+            addLog('System', `Reconnecting in ${delay/1000} seconds... (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+
+            reconnectTimeout = setTimeout(() => {
+                if (!isManualDisconnect) {
+                    initializeSSE();
+                }
+            }, delay);
+        }
+
+        // Initialize SSE connection on page load
+        initializeSSE();
+
+        // Data Table Management
+        let dataTablePollingInterval = null;
+        let currentCrawlerState = null;
+        let lastDataTableUpdate = 0;
+        let dataTableCurrentPage = 1;
+        let dataTableSearchTerm = '';
+        let dataTableSortBy = '';
+        let dataTableSortOrder = 'asc';
+
+        // Intelligent polling for data table updates
+        function startDataTablePolling() {
+            if (dataTablePollingInterval) {
+                clearInterval(dataTablePollingInterval);
+            }
+
+            // Adaptive polling interval based on crawler activity
+            function getPollingInterval() {
+                if (!currentCrawlerState) return 10000; // 10 seconds default
+
+                const isAnyCrawlerRunning = currentCrawlerState.categories.isRunning || currentCrawlerState.girls.isRunning;
+
+                if (isAnyCrawlerRunning) {
+                    return 2000; // 2 seconds when crawlers are active
+                } else {
+                    return 10000; // 10 seconds when idle
+                }
+            }
+
+            function pollDataTable() {
+                const now = Date.now();
+                const interval = getPollingInterval();
+
+                // Only update if enough time has passed
+                if (now - lastDataTableUpdate >= interval) {
+                    updateDataTable();
+                    lastDataTableUpdate = now;
                 }
 
-                // Show status indicator that crawler was stopped
-                if (statusIndicator) {
-                    statusIndicator.style.display = 'block';
+                // Schedule next poll with adaptive interval
+                dataTablePollingInterval = setTimeout(pollDataTable, interval);
+            }
+
+            // Start polling
+            pollDataTable();
+        }
+
+        // Update data table with current data
+        async function updateDataTable() {
+            try {
+                const params = new URLSearchParams({
+                    page: dataTableCurrentPage,
+                    limit: 50,
+                    search: dataTableSearchTerm,
+                    sortBy: dataTableSortBy,
+                    sortOrder: dataTableSortOrder
+                });
+
+                const response = await fetch(`/api/detail-girls-data?${params}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    renderDataTable(result);
+                    updateDataTableStats(result);
+                } else {
+                    console.error('Failed to fetch data table:', result.error);
                 }
-
-                addLog('System', 'Categories crawler stopped successfully');
-            } else if (data.type === 'girls') {
-                addLog('System', 'Girls crawler stopped');
+            } catch (error) {
+                console.error('Error updating data table:', error);
             }
-        });
+        }
 
-        // Handle crawler completion event
-        socket.on('complete', (data) => {
-            if (data.type === 'girls') {
-                addLog('System', 'Sequential crawler completed successfully!');
-            } else if (data.type === 'categories') {
-                addLog('System', 'Categories crawler completed successfully!');
-            }
-        });
+        // Render data table HTML
+        function renderDataTable(result) {
+            const tableContainer = document.getElementById('data-table-container');
+            if (!tableContainer) return;
 
-        // Handle crawler error event
-        socket.on('error', (data) => {
-            if (data.type === 'girls') {
-                addLog('Error', `Girls crawler error: ${data.error || 'Unknown error'}`);
-            } else if (data.type === 'categories') {
-                addLog('Error', `Categories crawler error: ${data.error || 'Unknown error'}`);
+            if (result.data.length === 0) {
+                tableContainer.innerHTML = `
+                    <div class="no-data-message">
+                        <p>${result.message || 'No data available'}</p>
+                    </div>
+                `;
+                return;
             }
-        });
+
+            let tableHTML = `
+                <div class="table-controls">
+                    <div class="search-container">
+                        <input type="text" id="data-table-search" placeholder="Search profiles..." value="${dataTableSearchTerm}">
+                        <button onclick="searchDataTable()">Search</button>
+                        <button onclick="clearDataTableSearch()">Clear</button>
+                    </div>
+                    <div class="pagination-info">
+                        Showing ${((result.page - 1) * result.limit) + 1}-${Math.min(result.page * result.limit, result.total)} of ${result.total} records
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+            `;
+
+            // Add sortable headers
+            result.headers.forEach(header => {
+                const isCurrentSort = dataTableSortBy === header;
+                const sortIcon = isCurrentSort ? (dataTableSortOrder === 'asc' ? '↑' : '↓') : '';
+                tableHTML += `<th onclick="sortDataTable('${header}')" class="sortable ${isCurrentSort ? 'sorted' : ''}">${header} ${sortIcon}</th>`;
+            });
+
+            tableHTML += `
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            // Add data rows
+            result.data.forEach(row => {
+                tableHTML += '<tr>';
+                result.headers.forEach(header => {
+                    const value = row[header] || '';
+                    const displayValue = value.length > 50 ? value.substring(0, 50) + '...' : value;
+                    tableHTML += `<td title="${value}">${displayValue}</td>`;
+                });
+                tableHTML += '</tr>';
+            });
+
+            tableHTML += `
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination-controls">
+                    <button onclick="changeDataTablePage(${result.page - 1})" ${result.page <= 1 ? 'disabled' : ''}>Previous</button>
+                    <span>Page ${result.page} of ${result.totalPages}</span>
+                    <button onclick="changeDataTablePage(${result.page + 1})" ${result.page >= result.totalPages ? 'disabled' : ''}>Next</button>
+                </div>
+            `;
+
+            tableContainer.innerHTML = tableHTML;
+        }
+
+        // Update data table statistics
+        function updateDataTableStats(result) {
+            const statsElement = document.getElementById('data-table-stats');
+            if (statsElement) {
+                statsElement.innerHTML = `
+                    <div class="stat-item">
+                        <div class="stat-value">${result.totalRecords}</div>
+                        <div class="stat-label">Total Records</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${result.total}</div>
+                        <div class="stat-label">Filtered Results</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${new Date(result.lastModified).toLocaleString()}</div>
+                        <div class="stat-label">Last Updated</div>
+                    </div>
+                `;
+            }
+        }
+
+        // Data table interaction functions
+        function searchDataTable() {
+            const searchInput = document.getElementById('data-table-search');
+            dataTableSearchTerm = searchInput ? searchInput.value : '';
+            dataTableCurrentPage = 1;
+            updateDataTable();
+        }
+
+        function clearDataTableSearch() {
+            dataTableSearchTerm = '';
+            dataTableCurrentPage = 1;
+            updateDataTable();
+        }
+
+        function sortDataTable(column) {
+            if (dataTableSortBy === column) {
+                dataTableSortOrder = dataTableSortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                dataTableSortBy = column;
+                dataTableSortOrder = 'asc';
+            }
+            updateDataTable();
+        }
+
+        function changeDataTablePage(page) {
+            if (page >= 1) {
+                dataTableCurrentPage = page;
+                updateDataTable();
+            }
+        }
+
+        // Start data table polling
+        startDataTablePolling();
         
 
         
         // Functions
         function updateCrawlerState(state) {
+            // Store current state for intelligent polling
+            currentCrawlerState = state;
             // Categories crawler
             const categoriesControl = document.getElementById('categories-control');
             const categoriesToggleBtn = document.getElementById('categories-toggle-btn');
