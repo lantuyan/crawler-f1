@@ -383,7 +383,7 @@ function logMemoryUsage(context = '') {
 // Basic crawler configuration
 const PROXY_URL = 'http://proxybird:proxybird@155.254.39.107:6065';
 const DELAY_BETWEEN_REQUESTS = 100; // 100ms delay between requests
-const MAX_CONCURRENT_THREADS = 5; // Reduced from 10 to 5 to prevent memory overflow
+const MAX_CONCURRENT_THREADS = 3; // Reduced from 10 to 5 to prevent memory overflow
 const OUTPUT_FILE = 'detail-girls.csv';
 
 // Cloudflare-aware retry configuration

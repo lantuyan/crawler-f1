@@ -10,7 +10,7 @@ const OUTPUT_FILE = 'list-girl.csv';
 const DELAY_BETWEEN_REQUESTS = 100; // 100ms delay for speed
 let totalPagesGirl = 125; // Total number of pages to crawl (will be updated dynamically)
 let totalGirlsExpected = 0; // Total number of girls expected (will be fetched dynamically)
-const numThreadsForGirl = 10; // Number of concurrent threads
+const numThreadsForGirl = 3; // Number of concurrent threads
 
 // Global shared state for all crawler threads
 const globalCrawlState = {

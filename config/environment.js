@@ -146,8 +146,8 @@ const config = {
     // Crawler settings
     crawler: {
         delayBetweenRequests: parseInt(process.env.DELAY_BETWEEN_REQUESTS) || 100,
-        categoriesThreads: parseInt(process.env.CATEGORIES_THREADS) || 10,
-        girlsThreads: parseInt(process.env.GIRLS_THREADS) || 10,
+        categoriesThreads: parseInt(process.env.CATEGORIES_THREADS) || 3,
+        girlsThreads: parseInt(process.env.GIRLS_THREADS) || 3,
         maxPagesCategories: parseInt(process.env.MAX_PAGES_CATEGORIES) || 125,
         requestTimeout: parseInt(process.env.REQUEST_TIMEOUT) || 30000
     },
